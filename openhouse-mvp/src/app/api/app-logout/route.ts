@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+import { verifyJWT } from '@/lib/jwt'
+
+export async function POST(request: NextRequest) {
+  try {
+    const token = request.cookies.get('app-session-token')?.value
+
+    if (token) {
+      const payload = verifyJWT(token)
+      
+      if (payload && supabase) {
+        // fix: remove session from database (Cursor Rule 4)
+        await supabase
+          .from('active_sessions')
+          .delete()
+          .eq('id', payload.session_id)
+      }
+    }
+
+    // fix: clear session cookie (Cursor Rule 3)
+    const response = NextResponse.json({ success: true })
+    
+    response.cookies.set('app-session-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/'
+    })
+
+    return response
+
+  } catch (error) {
+    console.error('Logout error:', error)
+    
+    // fix: still clear cookie even if database operation fails (Cursor Rule 3)
+    const response = NextResponse.json({ success: true })
+    response.cookies.set('app-session-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/'
+    })
+
+    return response
+  }
+} 

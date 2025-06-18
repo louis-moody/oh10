@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from './components/Providers'
+import { ConnectButton } from './components/ConnectButton'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,7 +39,21 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers>
+          <div className="min-h-screen bg-openhouse-bg">
+            <header className="border-b border-openhouse-border/20 bg-openhouse-bg/80 backdrop-blur-sm sticky top-0 z-50">
+              <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 className="font-heading text-xl font-bold text-openhouse-fg">
+                  OpenHouse
+                </h1>
+                <ConnectButton />
+              </div>
+            </header>
+            <main>
+              {children}
+            </main>
+          </div>
+        </Providers>
       </body>
     </html>
   );
