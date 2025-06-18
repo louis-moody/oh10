@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyJWT } from '@/lib/jwt'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -21,17 +21,22 @@ export async function middleware(request: NextRequest) {
 
   const payload = verifyJWT(token)
 
-  if (!payload || !supabase) {
+  if (!payload || !supabaseAdmin) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
   try {
-    // fix: validate session using Supabase RPC (Cursor Rule 3)
-    const { data: isValid, error } = await supabase
-      .rpc('is_valid_session', {
-        session_id: payload.session_id,
-        wallet_addr: payload.wallet_address
-      })
+    // fix: validate session using direct table lookup (Cursor Rule 3)
+    const { data: sessionData, error } = await supabaseAdmin
+      .from('active_sessions')
+      .select('*')
+      .eq('id', payload.session_id)
+      .eq('wallet_address', payload.wallet_address)
+      .eq('revoked', false)
+      .gt('expires_at', new Date().toISOString())
+      .single()
+
+    const isValid = !error && sessionData
 
     if (error || !isValid) {
       // fix: clear invalid session cookie (Cursor Rule 3)

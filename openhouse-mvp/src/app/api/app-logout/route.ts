@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
 
 export async function POST(request: NextRequest) {
@@ -9,12 +9,13 @@ export async function POST(request: NextRequest) {
     if (token) {
       const payload = verifyJWT(token)
       
-      if (payload && supabase) {
-        // fix: remove session from database (Cursor Rule 4)
-        await supabase
+      if (payload && supabaseAdmin) {
+        // fix: remove session from database using wallet address (Cursor Rule 4)
+        await supabaseAdmin
           .from('active_sessions')
           .delete()
           .eq('id', payload.session_id)
+          .eq('wallet_address', payload.wallet_address)
       }
     }
 
