@@ -42,17 +42,21 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   // fix: detect specific wallets as per PRD requirements (Cursor Rule 4)
   useEffect(() => {
     const detectWallets = () => {
+      // fix: safely access window.ethereum with proper typing (Cursor Rule 6)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ethereum = (window as any).ethereum
+      
       // fix: debug connector information (Cursor Rule 6)
       console.log('Available connectors:', connectors.map(c => ({ id: c.id, name: c.name, ready: c.ready })))
-      console.log('Window ethereum:', (window as any).ethereum)
-      console.log('MetaMask detected:', !!(window as any).ethereum?.isMetaMask)
-      console.log('Trust detected:', !!(window as any).ethereum?.isTrust)
+      console.log('Window ethereum:', ethereum)
+      console.log('MetaMask detected:', !!ethereum?.isMetaMask)
+      console.log('Trust detected:', !!ethereum?.isTrust)
 
       const options: WalletOption[] = [
         {
           name: 'MetaMask',
           id: 'metamask',
-          isAvailable: !!(window as any).ethereum?.isMetaMask,
+          isAvailable: !!ethereum?.isMetaMask,
           connector: connectors.find(c => c.id === 'injected')
         },
         {
@@ -65,13 +69,13 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
         {
           name: 'Trust Wallet',
           id: 'trustWallet',
-          isAvailable: !!(window as any).ethereum?.isTrust,
+          isAvailable: !!ethereum?.isTrust,
           connector: connectors.find(c => c.id === 'injected')
         },
         {
           name: 'Other Wallet',
           id: 'generic',
-          isAvailable: !!(window as any).ethereum && !(window as any).ethereum?.isMetaMask && !(window as any).ethereum?.isTrust,
+          isAvailable: !!ethereum && !ethereum?.isMetaMask && !ethereum?.isTrust,
           connector: connectors.find(c => c.id === 'injected')
         }
       ]

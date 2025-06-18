@@ -1,36 +1,128 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OpenHouse MVP - Tokenized Real Estate Investment Platform
 
-## Getting Started
+OpenHouse is a tokenized real estate crowdfunding platform built on Base L2. Users invest in UK properties using USDC, with tokens representing ownership shares.
 
-First, run the development server:
+## 🚀 **Features**
+
+### ✅ **Complete Authentication System**
+- **Wallet Connection**: MetaMask, Coinbase Wallet, Trust Wallet support
+- **SIWE Authentication**: Sign-in-with-Ethereum message verification
+- **Profile Completion**: Automatic name/email capture with marketing consent
+- **Session Management**: Secure JWT tokens in HttpOnly cookies
+
+### 🏗️ **Architecture**
+- **Frontend**: Next.js 15, React 19, TypeScript, ShadCN UI, Tailwind CSS
+- **Blockchain**: Base L2 (Sepolia testnet), Wagmi, OnchainKit
+- **Backend**: Supabase PostgreSQL, Row Level Security
+- **Authentication**: SIWE + JWT sessions
+
+### 🎯 **User Flow**
+1. **Connect Wallet** → Choose from supported wallets
+2. **Sign Message** → SIWE authentication 
+3. **Complete Profile** → Name, email, marketing consent (one-time)
+4. **Access Platform** → Full authentication complete
+
+## 🛠️ **Setup**
+
+### 1. Environment Variables
+Copy `ENV_TEMPLATE.md` to `.env.local` and fill in your values:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# JWT Authentication
+APP_SESSION_JWT_SECRET=your_strong_jwt_secret_32_chars_minimum
+
+# Base Network Configuration
+NEXT_PUBLIC_BASE_CHAIN_ID=84532  # Base Sepolia testnet
+NEXT_PUBLIC_BASE_RPC=https://sepolia.base.org
+NEXT_PUBLIC_USDC_ADDRESS=0x036CbD53842c542668d858Cdf5Ff6eC9C2FcA5D7
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Database Setup
+Run the migration in your Supabase SQL Editor:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sql
+-- Copy and run profile-completion-migration.sql
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Install & Run
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+## 📁 **Project Structure**
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+├── app/
+│   ├── api/                    # API routes
+│   │   ├── app-login/         # SIWE authentication
+│   │   ├── app-logout/        # Session cleanup
+│   │   ├── profile-complete/  # Profile completion
+│   │   └── user-profile/      # Profile fetching
+│   ├── components/            # React components
+│   │   ├── ui/               # ShadCN UI components
+│   │   ├── AuthenticationFlow.tsx  # Complete auth flow
+│   │   ├── ConnectButton.tsx      # Wallet connection
+│   │   ├── ProfileCompleteModal.tsx # Profile capture
+│   │   └── ...
+│   ├── properties/[id]/       # Property detail pages
+│   ├── globals.css           # Global styles
+│   ├── layout.tsx            # Root layout
+│   └── page.tsx             # Homepage
+├── lib/
+│   ├── jwt.ts               # JWT utilities
+│   ├── supabase.ts          # Database client
+│   ├── utils.ts             # Utilities
+│   └── wagmi-config.ts      # Wallet configuration
+└── middleware.ts            # Route protection
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🔒 **Security Features**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **HttpOnly Cookies**: JWT tokens never exposed to frontend JS
+- **SIWE Verification**: Cryptographic proof of wallet ownership  
+- **Session Validation**: Middleware protection for routes
+- **Input Validation**: Comprehensive form and API validation
+- **RLS Ready**: Supabase Row Level Security policies prepared
 
-## Deploy on Vercel
+## 🎨 **Design System**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **ShadCN UI**: Customized components with OpenHouse branding
+- **Tailwind CSS**: Custom design tokens and color system
+- **Responsive**: Mobile-first design approach
+- **Accessibility**: WCAG compliant components
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📊 **Database Schema**
+
+### Users Table
+- `id`, `wallet_address`, `name`, `email`
+- `profile_completed`, `marketing_consent`
+- `created_at`, `updated_at`
+
+### Active Sessions
+- `id`, `user_id`, `jwt_id`, `wallet_address`
+- `expires_at`, `revoked`, `created_at`
+
+### Properties, Transactions, Holdings
+- Full schema for real estate investment tracking
+
+## 🚀 **Ready for Production**
+
+The MVP foundation is complete with:
+- ✅ Secure wallet authentication
+- ✅ User profile management  
+- ✅ Session handling
+- ✅ Database architecture
+- ✅ Component system
+
+**Next Phase**: Property investment flows, USDC payments, token minting
+
+---
+
+Built with ❤️ for tokenized real estate investment

@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { ConnectButton } from './ConnectButton'
 import { ProfileCompleteModal } from './ProfileCompleteModal'
 
 interface AuthenticationFlowProps {
-  onAuthComplete?: (user: { wallet_address: string; name?: string; email?: string; profile_completed: boolean }) => void
+  onAuthComplete?: (user: { wallet_address: string; name?: string; email?: string; profile_completed: boolean } | null) => void
 }
 
 interface UserProfile {
@@ -19,12 +19,10 @@ interface UserProfile {
 export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [isCheckingProfile, setIsCheckingProfile] = useState(false)
 
   // fix: check if user profile is complete after authentication (Cursor Rule 4)
   const checkUserProfile = async (walletAddress: string) => {
     try {
-      setIsCheckingProfile(true)
       console.log('🔍 Checking profile completion for:', walletAddress)
 
       // fix: call backend to check profile status (Cursor Rule 4)
@@ -58,8 +56,6 @@ export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) 
       // fix: fallback to showing profile modal (Cursor Rule 6)
       setCurrentUser({ wallet_address: walletAddress, profile_completed: false })
       setShowProfileModal(true)
-    } finally {
-      setIsCheckingProfile(false)
     }
   }
 
@@ -69,7 +65,7 @@ export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) 
       // User disconnected
       setCurrentUser(null)
       setShowProfileModal(false)
-      onAuthComplete?.(null as any)
+      onAuthComplete?.(null)
       return
     }
 
