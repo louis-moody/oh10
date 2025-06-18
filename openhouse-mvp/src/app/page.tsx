@@ -1,0 +1,148 @@
+'use client'
+
+import React, { useEffect, useState } from 'react'
+import { supabase, type Property, type PropertyWithProgress } from '@/lib/supabase'
+import { PropertyCard, EmptyState, LoadingState } from '@/components'
+import { Building2, AlertCircle } from 'lucide-react'
+
+export default function HomePage() {
+  const [properties, setProperties] = useState<PropertyWithProgress[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchProperties()
+  }, [])
+
+  const fetchProperties = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // fix: handle case where Supabase is not configured (Cursor Rule 6)
+      if (!supabase) {
+        setError('Supabase configuration is missing. Please set up your environment variables.')
+        return
+      }
+
+      // fix: fetch properties without payment authorization data to avoid RLS issues (Cursor Rule 4)
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from('properties')
+        .select('*')
+        .in('status', ['active', 'funded'])
+        .order('created_at', { ascending: false })
+
+      if (propertiesError) {
+        throw new Error(`Failed to fetch properties: ${propertiesError.message}`)
+      }
+
+      if (!propertiesData || propertiesData.length === 0) {
+        setProperties([])
+        return
+      }
+
+      // fix: show properties with zero progress until payment_authorizations table is properly configured (Cursor Rule 4)
+      const propertiesWithProgress: PropertyWithProgress[] = propertiesData.map((property: Property) => ({
+        ...property,
+        raised_amount: 0,
+        progress_percentage: 0
+      }))
+
+      setProperties(propertiesWithProgress)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
+      setError(errorMessage)
+      console.error('Error fetching properties:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-openhouse-bg">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Building2 className="w-8 h-8 text-openhouse-accent" />
+              <h1 className="font-heading text-3xl font-bold text-openhouse-fg">
+                OpenHouse
+              </h1>
+            </div>
+            <p className="text-openhouse-fg-muted text-lg">
+              Tokenized real estate investment on Base L2
+            </p>
+          </div>
+          <LoadingState />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-openhouse-bg">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Building2 className="w-8 h-8 text-openhouse-accent" />
+              <h1 className="font-heading text-3xl font-bold text-openhouse-fg">
+                OpenHouse
+              </h1>
+            </div>
+            <p className="text-openhouse-fg-muted text-lg">
+              Tokenized real estate investment on Base L2
+            </p>
+          </div>
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-openhouse-danger/10 flex items-center justify-center mb-4">
+              <AlertCircle className="w-8 h-8 text-openhouse-danger" />
+            </div>
+            <h3 className="font-heading text-lg font-semibold text-openhouse-fg mb-2">
+              Unable to load properties
+            </h3>
+            <p className="text-openhouse-fg-muted max-w-sm mb-4">
+              {error}
+            </p>
+            {!error.includes('configuration') && (
+              <button
+                onClick={fetchProperties}
+                className="px-4 py-2 bg-openhouse-accent text-openhouse-accent-fg rounded-lg hover:bg-openhouse-accent/90 transition-colors"
+              >
+                Try Again
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-openhouse-bg">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 className="w-8 h-8 text-openhouse-accent" />
+            <h1 className="font-heading text-3xl font-bold text-openhouse-fg">
+              OpenHouse
+            </h1>
+          </div>
+          <p className="text-openhouse-fg-muted text-lg">
+            Tokenized real estate investment on Base L2
+          </p>
+        </div>
+
+        {properties.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {properties.map((property) => (
+              <PropertyCard key={property.id} property={property} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

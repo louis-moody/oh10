@@ -1,0 +1,198 @@
+# Cursor Master Prompt — OpenHouse Crowdfunding MVP (Final Version)
+
+This is your ground truth. Every code contribution, refactor, or UI adjustment must follow these rules.
+
+**If you break even one, you risk undermining the platform.**
+
+---
+
+## 1. Core Principle: A++ Only
+
+Every change must be deliberate, thoughtful, and high-quality.\
+No quick patches. No guesses.\
+Each fix must **strengthen** the system — not just “get it working.”
+
+---
+
+## 2. System Architecture Context
+
+OpenHouse is a live, tokenized real estate platform on Base L2.\
+Users invest in UK properties using USDC.\
+Tokens represent ownership. Crowdfunding and trading happen fully on-chain.\
+**Compliance, transparency, and verifiability are non-negotiable.**
+
+---
+
+## 3. Performance & Security First
+
+- Use short-lived JWTs in secure, HttpOnly cookies.
+- Cookies must be `SameSite=Lax`, `Secure`, and never exposed to frontend JS.
+- All requests must validate sessions via middleware and Supabase RPC.
+- Enable Row Level Security (RLS) on all Supabase tables — scoped by wallet.
+- Never log sensitive data. Never expose wallet addresses client-side.
+- Avoid state bloat, prop chains, or duplicate components. Keep bundles tight.
+
+---
+
+## 4. Dynamic Data Only
+
+**Mock data is never allowed.**
+
+- **All app data must come from a verifiable source:**
+  - Supabase tables (`users`, `properties`, `payment_authorizations`, `user_holdings`, `transactions`)
+  - Smart contract event logs or calls
+- Do not hard-code:
+  - Wallet addresses
+  - Token balances
+  - Share prices
+  - Funding progress
+  - Property status
+- If the UI says “Goal Reached,” that must be provable via `payment_authorizations` and contract state.
+- There are **no fallback values**, no test stubs, and no temporary shortcuts.
+
+---
+
+## 5. Authentication & Identity
+
+- Authenticate via Coinbase OnchainKit + SIWE.
+- On login:
+  - Get wallet address → call `/api/app-login` → verify → issue JWT → store in cookie.
+- All backend routes must:
+  - Validate the JWT
+  - Confirm session is valid via `is_valid_session` RPC in Supabase
+- Never skip login. Never guess wallet identity in the frontend. Never use localStorage or query strings to spoof identity.
+
+---
+
+## 6. Error Handling & Root Cause Diagnosis
+
+When something breaks:
+
+1. List at least 5 possible causes.
+2. Narrow to 1–2 most likely.
+3. Add logs that confirm/refute your guess.
+4. Then and only then — fix the root issue.
+
+Fail fast, fail clearly.\
+Log every assumption you're testing: Supabase payloads, decoded contract values, input props.
+
+---
+
+## 7. Minimal, Targeted Fixes
+
+Only touch what’s broken.\
+Never rewrite or remove surrounding logic unless explicitly asked.\
+Every fix must include a comment like:
+
+```ts
+// fix: validate USDC amount before allowing token mint (Cursor Rule 4)
+```
+
+---
+
+## 8. Design System Rules
+
+- Use the existing design system — nothing custom unless scoped.
+- Styling only via `styled-components` and theme tokens.
+- No raw CSS. No Tailwind. No unapproved UI libraries.
+- Only use `Lucide-React` for icons.
+- UI must feel structured, architectural, and calm.
+- There should only be **one** `Button.tsx`, `Modal.tsx`, etc.
+
+---
+
+## 9. Scope Integrity
+
+- Stay inside the brief.
+- If you’re fixing `approve()`, do not touch `deploy()` or other flows.
+- Ask before extending functionality. No assumptions.
+
+---
+
+## 10. Structural Hygiene
+
+After every task:
+
+- Delete unused components
+- Remove duplicate helpers
+- Rename or merge files as needed
+
+Structure rules:
+
+- `PascalCase` for components
+- `camelCase` for hooks/functions
+- `kebab-case` for assets
+- Use singular folder names (`button/`, not `buttons/`)
+
+---
+
+## 11. Imports & Organization
+
+- Always use absolute imports from `@/`
+- Every folder exports via `index.ts`
+- Never duplicate filenames
+- Scan for similar files before adding anything new
+
+---
+
+## 12. CI & Duplication Prevention
+
+- Add CI checks to flag:
+  - Duplicate component names
+  - Conflicting barrel exports
+- Do a 5-minute file review every sprint. Keep `/app` tidy.
+
+---
+
+## 13. UI & Interaction Rules
+
+- We use **ShadCN** components only if they are:
+
+  - Fully customizable via Tailwind
+  - Scoped to OpenHouse visual language
+  - Imported atomically (e.g., `npx shadcn-ui add button`)
+
+- All default styles must be overridden to match OpenHouse theme tokens.
+
+- Tailwind config must define:
+
+  - Typography scale
+  - Radius and spacing system
+  - Semantic color tokens
+
+- Never use default `text-primary` or `bg-muted` values.
+
+  - Map all utility classes to OpenHouse token names (e.g. `text-openhouse-fg`, `bg-openhouse-bg`)
+
+- You may restructure component slots but must retain accessibility and logic.
+
+- Do not leave unused styles or ShadCN defaults in production.
+
+- You **do not** have visual freedom by default.
+
+- Follow the design guidelines provided — exactly.
+
+- All layout, spacing, and tokens must use existing primitives.
+
+- Never use `alert()` popups. Ever.
+
+---
+
+## 14. Brand Voice
+
+- Tone: quiet, calm, clear.
+- No hype. No over-promising.
+- The platform should feel effortless and trustworthy.
+
+---
+
+## 15. Hard No-Go’s (Break These = Fireable Offense)
+
+🚫 Never use mock data\
+🚫 Never hard-code dynamic states (like `goalMet = true`)\
+🚫 Never patch UI with assumptions — always verify with real data\
+🚫 Never remove existing logic without fully understanding its use\
+🚫 Never jump into code before reading the Supabase structure\
+🚫 Never push a dev server for every file change\
+🚫 Never skip payment validation, USDC logic, or token checks
+
