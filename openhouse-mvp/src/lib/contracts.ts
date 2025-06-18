@@ -630,4 +630,124 @@ export async function getUserPendingYieldForRound(
     console.error('Error fetching pending yield for round:', error);
     return null;
   }
-} 
+}
+
+
+
+// fix: OrderBookExchange ABI and utilities (Cursor Rule 4)
+export const OrderBookExchangeABI = [
+  "function propertyId() view returns (uint256)",
+  "function propertyToken() view returns (address)",
+  "function usdcToken() view returns (address)",
+  "function treasury() view returns (address)",
+  "function operator() view returns (address)",
+  "function protocolFeeBasisPoints() view returns (uint256)",
+  "function nextOrderId() view returns (uint256)",
+  "function totalFeesCollected() view returns (uint256)",
+  "function createBuyOrder(uint256, uint256)",
+  "function createSellOrder(uint256, uint256)",
+  "function executeOrder(uint256, uint256)",
+  "function cancelOrder(uint256)",
+  "function getOrder(uint256) view returns (uint256, address, uint8, uint256, uint256, uint256, uint256, uint8, bool)",
+  "function getUserOrders(address) view returns (uint256[])",
+  "function getOrdersByType(uint8) view returns (uint256[])",
+  "function calculateFees(uint256) view returns (uint256, uint256, uint256)",
+  "function updateProtocolFee(uint256)",
+  "function withdrawProtocolFees(uint256)",
+  "function emergencyWithdrawAllFees()",
+  "event OrderCreated(uint256 indexed orderId, address indexed creator, uint8 indexed orderType, uint256 tokenAmount, uint256 pricePerToken, uint256 timestamp)",
+  "event OrderFilled(uint256 indexed orderId, address indexed buyer, address indexed seller, uint256 tokenAmount, uint256 pricePerToken, uint256 buyerFee, uint256 sellerFee, uint256 timestamp)",
+  "event OrderCancelled(uint256 indexed orderId, address indexed creator, uint256 remainingAmount, uint256 timestamp)",
+  "event OrderPartiallyFilled(uint256 indexed orderId, address indexed filler, uint256 filledAmount, uint256 remainingAmount, uint256 timestamp)",
+  "event FeesWithdrawn(address indexed treasury, uint256 amount, uint256 timestamp)",
+  "event ProtocolFeeUpdated(uint256 oldFeeBasisPoints, uint256 newFeeBasisPoints, uint256 timestamp)"
+] as const;
+
+// fix: USDC token ABI for Base network (Cursor Rule 4)
+export const USDCABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function transfer(address, uint256) returns (bool)",
+  "function approve(address, uint256) returns (bool)",
+  "function allowance(address, address) view returns (uint256)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)"
+] as const;
+
+
+
+// fix: order types for OrderBookExchange (Cursor Rule 4)
+export const OrderType = {
+  BUY: 0,
+  SELL: 1
+} as const;
+
+// fix: order status for OrderBookExchange (Cursor Rule 4)
+export const OrderStatus = {
+  ACTIVE: 0,
+  FILLED: 1,
+  CANCELLED: 2,
+  PARTIAL: 3
+} as const;
+
+// fix: utility functions for contract interactions (Cursor Rule 4)
+export const ContractUtils = {
+  // Calculate total USDC required for buy order including fees
+  calculateBuyOrderTotal: (tokenAmount: bigint, pricePerToken: bigint, protocolFeeBasisPoints: bigint): bigint => {
+    const totalValue = (tokenAmount * pricePerToken) / BigInt(1e18);
+    const buyerFee = (totalValue * protocolFeeBasisPoints) / BigInt(10000);
+    return totalValue + buyerFee;
+  },
+
+  // Calculate fees for a trade value
+  calculateTradeFees: (tradeValue: bigint, protocolFeeBasisPoints: bigint): { buyerFee: bigint; sellerFee: bigint; totalFees: bigint } => {
+    const buyerFee = (tradeValue * protocolFeeBasisPoints) / BigInt(10000);
+    const sellerFee = (tradeValue * protocolFeeBasisPoints) / BigInt(10000);
+    return {
+      buyerFee,
+      sellerFee,
+      totalFees: buyerFee + sellerFee
+    };
+  },
+
+  // Convert order type enum to string
+  orderTypeToString: (orderType: number): string => {
+    return orderType === OrderType.BUY ? "BUY" : "SELL";
+  },
+
+  // Convert order status enum to string
+  orderStatusToString: (status: number): string => {
+    switch (status) {
+      case OrderStatus.ACTIVE: return "ACTIVE";
+      case OrderStatus.FILLED: return "FILLED";
+      case OrderStatus.CANCELLED: return "CANCELLED";
+      case OrderStatus.PARTIAL: return "PARTIAL";
+      default: return "UNKNOWN";
+    }
+  },
+
+  // Format USDC amount for display (6 decimals)
+  formatUSDC: (amount: bigint): string => {
+    return (Number(amount) / 1e6).toFixed(2);
+  },
+
+  // Format token amount for display (18 decimals)
+  formatTokens: (amount: bigint): string => {
+    return (Number(amount) / 1e18).toFixed(6);
+  },
+
+  // Parse USDC input to wei (6 decimals)
+  parseUSDC: (amount: string): bigint => {
+    return BigInt(Math.floor(parseFloat(amount) * 1e6));
+  },
+
+  // Parse token input to wei (18 decimals)
+  parseTokens: (amount: string): bigint => {
+    return BigInt(Math.floor(parseFloat(amount) * 1e18));
+  }
+};
+
+ 

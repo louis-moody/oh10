@@ -1,11 +1,13 @@
-import { HardhatUserConfig } from "hardhat/config";
-import "@nomicfoundation/hardhat-toolbox";
-import "@nomicfoundation/hardhat-ethers";
-import "hardhat-gas-reporter";
-import "solidity-coverage";
+require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-ethers");
+require("hardhat-gas-reporter");
+require("solidity-coverage");
+
+// fix: configure TypeScript support for deployment scripts (Cursor Rule 7)
+require('dotenv').config({ path: '.env' });
 
 // fix: load environment variables for smart contract deployment (Cursor Rule 3)
-const config: HardhatUserConfig = {
+const config = {
   solidity: {
     version: "0.8.24",
     settings: {
@@ -14,6 +16,10 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
     },
+  },
+  typechain: {
+    outDir: "typechain-types",
+    target: "ethers-v6",
   },
   networks: {
     hardhat: {
@@ -60,4 +66,4 @@ const config: HardhatUserConfig = {
   },
 };
 
-export default config; 
+module.exports = config; 

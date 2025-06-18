@@ -1,5 +1,5 @@
-import hre from "hardhat";
-import { createClient } from '@supabase/supabase-js';
+const hre = require("hardhat");
+const { createClient } = require('@supabase/supabase-js');
 
 const { ethers } = hre;
 
@@ -51,8 +51,7 @@ async function main() {
       property_id,
       contract_address,
       token_name,
-      token_symbol,
-      properties!inner(id, title)
+      token_symbol
     `)
     .not('contract_address', 'is', null);
 

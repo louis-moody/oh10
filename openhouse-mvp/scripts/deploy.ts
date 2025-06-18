@@ -1,5 +1,7 @@
-import { ethers } from "hardhat";
+import hre from "hardhat";
 import { createClient } from '@supabase/supabase-js';
+
+const { ethers } = hre;
 
 // fix: load environment variables for deployment (Cursor Rule 3)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
