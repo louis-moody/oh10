@@ -23,6 +23,10 @@ NEXT_PUBLIC_BASE_RPC=https://sepolia.base.org
 
 # USDC Token Configuration (Base Sepolia)
 NEXT_PUBLIC_USDC_ADDRESS=0x036CbD53842c542668d858Cdf5Ff6eC9C2FcA5D7
+
+# Smart Contract Deployment Configuration
+DEPLOYER_PRIVATE_KEY=0xf063a4c927727ac12d22d34fa324ca0b95507c06e623cb6d258aa941ea70376d
+BASESCAN_API_KEY=your_basescan_api_key_for_verification
 ```
 
 ## Variable Descriptions
@@ -33,6 +37,8 @@ NEXT_PUBLIC_USDC_ADDRESS=0x036CbD53842c542668d858Cdf5Ff6eC9C2FcA5D7
 - **NEXT_PUBLIC_BASE_CHAIN_ID**: 84532 for Base Sepolia testnet, 8453 for mainnet
 - **NEXT_PUBLIC_BASE_RPC**: RPC endpoint for Base Sepolia
 - **NEXT_PUBLIC_USDC_ADDRESS**: USDC test deployment on Base Sepolia
+- **DEPLOYER_PRIVATE_KEY**: Private key for contract deployment wallet (keep secure!)
+- **BASESCAN_API_KEY**: API key for contract verification on BaseScan
 
 ## Wallet Configuration
 
