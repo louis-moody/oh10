@@ -1,11 +1,12 @@
 import { createConfig, http } from 'wagmi'
-import { base } from 'wagmi/chains'
+import { base, baseSepolia } from 'wagmi/chains'
 import { coinbaseWallet, walletConnect, injected } from 'wagmi/connectors'
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
+const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC
 
 export const config = createConfig({
-  chains: [base],
+  chains: [baseSepolia, base],
   connectors: [
     injected(),
     coinbaseWallet({
@@ -23,6 +24,7 @@ export const config = createConfig({
     })
   ],
   transports: {
+    [baseSepolia.id]: http(rpcUrl),
     [base.id]: http()
   }
 }) 

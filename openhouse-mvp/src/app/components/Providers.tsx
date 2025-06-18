@@ -5,7 +5,7 @@ import { OnchainKitProvider } from '@coinbase/onchainkit'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { config } from '@/lib/wagmi-config'
-import { base } from 'viem/chains'
+import { base, baseSepolia } from 'viem/chains'
 
 const queryClient = new QueryClient()
 
@@ -14,12 +14,17 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
+  // fix: use Base Sepolia for development, Base mainnet for production (Cursor Rule 2)
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const activeChain = isDevelopment ? baseSepolia : base
+
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <OnchainKitProvider
           apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}
-          chain={base}
+          chain={activeChain}
+          projectId={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_ID}
         >
           {children}
         </OnchainKitProvider>

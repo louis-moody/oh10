@@ -46,13 +46,16 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       setAuthError(null)
 
       // fix: create SIWE message (Cursor Rule 5)
+      const isDevelopment = process.env.NODE_ENV === 'development'
+      const chainId = isDevelopment ? 84532 : 8453 // Base Sepolia for dev, Base mainnet for prod
+      
       const message = new SiweMessage({
         domain: window.location.host,
         address: address,
         statement: 'Sign in to OpenHouse',
         uri: window.location.origin,
         version: '1',
-        chainId: 8453, // Base mainnet
+        chainId: chainId,
         nonce: Math.random().toString(36).substring(2, 15),
         issuedAt: new Date().toISOString()
       })
