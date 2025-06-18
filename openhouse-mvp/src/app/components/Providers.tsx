@@ -24,7 +24,6 @@ export function Providers({ children }: ProvidersProps) {
         <OnchainKitProvider
           apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}
           chain={activeChain}
-          projectId={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_ID}
         >
           {children}
         </OnchainKitProvider>
