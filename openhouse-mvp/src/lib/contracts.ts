@@ -144,6 +144,119 @@ export const PROPERTY_SHARE_TOKEN_ABI = [
   }
 ] as const;
 
+// fix: YieldDistributor ABI for yield distribution interactions (Cursor Rule 4)
+export const YIELD_DISTRIBUTOR_ABI = [
+  {
+    "inputs": [
+      {"name": "_propertyId", "type": "uint256"},
+      {"name": "_propertyTokenAddress", "type": "address"},
+      {"name": "_usdcTokenAddress", "type": "address"},
+      {"name": "_treasury", "type": "address"},
+      {"name": "_operator", "type": "address"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "name": "distributionRound", "type": "uint256"},
+      {"indexed": false, "name": "amount", "type": "uint256"},
+      {"indexed": false, "name": "timestamp", "type": "uint256"}
+    ],
+    "name": "YieldDeposited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "name": "distributionRound", "type": "uint256"},
+      {"indexed": false, "name": "totalAmount", "type": "uint256"},
+      {"indexed": false, "name": "yieldPerToken", "type": "uint256"},
+      {"indexed": false, "name": "snapshotBlock", "type": "uint256"},
+      {"indexed": false, "name": "eligibleTokens", "type": "uint256"}
+    ],
+    "name": "YieldDistributed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "name": "user", "type": "address"},
+      {"indexed": true, "name": "distributionRound", "type": "uint256"},
+      {"indexed": false, "name": "amount", "type": "uint256"},
+      {"indexed": false, "name": "timestamp", "type": "uint256"}
+    ],
+    "name": "YieldClaimed",
+    "type": "event"
+  },
+  {
+    "inputs": [{"name": "amount", "type": "uint256"}],
+    "name": "depositYield",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "yieldAmount", "type": "uint256"}],
+    "name": "distribute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "distributionRound", "type": "uint256"}],
+    "name": "claimYield",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "user", "type": "address"}, {"name": "distributionRound", "type": "uint256"}],
+    "name": "getPendingYield",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "user", "type": "address"}],
+    "name": "getTotalPendingYield",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "currentDistributionRound",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalDistributedUsdc",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "distributionRound", "type": "uint256"}],
+    "name": "getDistributionRound",
+    "outputs": [
+      {"name": "totalYieldUsdc", "type": "uint256"},
+      {"name": "yieldPerToken", "type": "uint256"},
+      {"name": "snapshotBlock", "type": "uint256"},
+      {"name": "totalEligibleTokens", "type": "uint256"},
+      {"name": "distributionTimestamp", "type": "uint256"},
+      {"name": "distributionCompleted", "type": "bool"},
+      {"name": "totalClaimedUsdc", "type": "uint256"},
+      {"name": "claimsCount", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
 // fix: USDC contract ABI for payment interactions (Cursor Rule 4)
 export const USDC_ABI = [
   {
@@ -403,4 +516,118 @@ export function validateTokenPurchase(
   }
 
   return {valid: true};
+}
+
+// fix: YieldDistributor utility functions (Cursor Rule 4)
+
+export interface YieldDistributionInfo {
+  currentRound: bigint;
+  totalDistributed: bigint;
+  userPendingYield: bigint;
+}
+
+export interface DistributionRoundInfo {
+  totalYieldUsdc: bigint;
+  yieldPerToken: bigint;
+  snapshotBlock: bigint;
+  totalEligibleTokens: bigint;
+  distributionTimestamp: bigint;
+  distributionCompleted: boolean;
+  totalClaimedUsdc: bigint;
+  claimsCount: bigint;
+}
+
+export async function getYieldDistributionInfo(
+  chainId: number,
+  contractAddress: `0x${string}`,
+  userAddress: `0x${string}`
+): Promise<YieldDistributionInfo | null> {
+  const client = getPublicClient(chainId);
+  if (!client) return null;
+
+  try {
+    const [currentRound, totalDistributed, userPendingYield] = await Promise.all([
+      client.readContract({
+        address: contractAddress,
+        abi: YIELD_DISTRIBUTOR_ABI,
+        functionName: 'currentDistributionRound',
+      }),
+      client.readContract({
+        address: contractAddress,
+        abi: YIELD_DISTRIBUTOR_ABI,
+        functionName: 'totalDistributedUsdc',
+      }),
+      client.readContract({
+        address: contractAddress,
+        abi: YIELD_DISTRIBUTOR_ABI,
+        functionName: 'getTotalPendingYield',
+        args: [userAddress],
+      }),
+    ]);
+
+    return {
+      currentRound: currentRound as bigint,
+      totalDistributed: totalDistributed as bigint,
+      userPendingYield: userPendingYield as bigint,
+    };
+  } catch (error) {
+    console.error('Error fetching yield distribution info:', error);
+    return null;
+  }
+}
+
+export async function getDistributionRoundInfo(
+  chainId: number,
+  contractAddress: `0x${string}`,
+  roundNumber: bigint
+): Promise<DistributionRoundInfo | null> {
+  const client = getPublicClient(chainId);
+  if (!client) return null;
+
+  try {
+    const roundInfo = await client.readContract({
+      address: contractAddress,
+      abi: YIELD_DISTRIBUTOR_ABI,
+      functionName: 'getDistributionRound',
+      args: [roundNumber],
+    }) as [bigint, bigint, bigint, bigint, bigint, boolean, bigint, bigint];
+
+    return {
+      totalYieldUsdc: roundInfo[0],
+      yieldPerToken: roundInfo[1],
+      snapshotBlock: roundInfo[2],
+      totalEligibleTokens: roundInfo[3],
+      distributionTimestamp: roundInfo[4],
+      distributionCompleted: roundInfo[5],
+      totalClaimedUsdc: roundInfo[6],
+      claimsCount: roundInfo[7],
+    };
+  } catch (error) {
+    console.error('Error fetching distribution round info:', error);
+    return null;
+  }
+}
+
+export async function getUserPendingYieldForRound(
+  chainId: number,
+  contractAddress: `0x${string}`,
+  userAddress: `0x${string}`,
+  roundNumber: bigint
+): Promise<bigint | null> {
+  const client = getPublicClient(chainId);
+  if (!client) return null;
+
+  try {
+    const pendingYield = await client.readContract({
+      address: contractAddress,
+      abi: YIELD_DISTRIBUTOR_ABI,
+      functionName: 'getPendingYield',
+      args: [userAddress, roundNumber],
+    });
+
+    return pendingYield as bigint;
+  } catch (error) {
+    console.error('Error fetching pending yield for round:', error);
+    return null;
+  }
 } 

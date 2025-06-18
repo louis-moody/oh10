@@ -65,7 +65,7 @@ describe("PropertyShareToken", function () {
     });
 
     it("Should revert deployment with invalid parameters", async function () {
-      const PropertyShareTokenFactory = await ethers.getContractFactory("PropertyShareToken");
+      const PropertyShareTokenFactory = await hre.ethers.getContractFactory("PropertyShareToken");
 
       // Test zero total shares
       await expect(
@@ -122,7 +122,7 @@ describe("PropertyShareToken", function () {
           TEST_PROPERTY.pricePerToken,
           TEST_PROPERTY.fundingGoalUsdc,
           TEST_PROPERTY.fundingDeadline,
-          ethers.ZeroAddress, // Invalid treasury address
+          hre.ethers.ZeroAddress, // Invalid treasury address
           operator.address
         )
       ).to.be.revertedWith("PropertyShareToken: treasury address cannot be zero");
@@ -150,7 +150,7 @@ describe("PropertyShareToken", function () {
 
     it("Should prevent minting to zero address", async function () {
       await expect(
-        propertyToken.mintTo(ethers.ZeroAddress, 100)
+        propertyToken.mintTo(hre.ethers.ZeroAddress, 100)
       ).to.be.revertedWith("PropertyShareToken: cannot mint to zero address");
     });
 

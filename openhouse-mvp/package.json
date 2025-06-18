@@ -10,7 +10,9 @@
     "contracts:compile": "hardhat compile",
     "contracts:test": "hardhat test",
     "contracts:deploy:sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
-    "contracts:deploy:mainnet": "hardhat run scripts/deploy.ts --network baseMainnet"
+    "contracts:deploy:mainnet": "hardhat run scripts/deploy.ts --network baseMainnet",
+    "contracts:deploy-yield:sepolia": "hardhat run scripts/deploy-yield-distributor.ts --network baseSepolia",
+    "contracts:deploy-yield:mainnet": "hardhat run scripts/deploy-yield-distributor.ts --network baseMainnet"
   },
   "dependencies": {
     "@coinbase/onchainkit": "^0.38.14",
