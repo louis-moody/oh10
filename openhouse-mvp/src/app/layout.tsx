@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from './components/Providers'
-import { ConnectButton } from './components/ConnectButton'
+import { AuthenticationFlow } from './components/AuthenticationFlow'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,7 +46,7 @@ export default function RootLayout({
                 <h1 className="font-heading text-xl font-bold text-openhouse-fg">
                   OpenHouse
                 </h1>
-                <ConnectButton />
+                <AuthenticationFlow />
               </div>
             </header>
             <main>
