@@ -1,8 +1,10 @@
 'use client'
 
 import React, { useState } from 'react'
+import Link from 'next/link'
 import { ConnectButton } from './ConnectButton'
 import { ProfileCompleteModal } from './ProfileCompleteModal'
+import { Shield } from 'lucide-react'
 
 interface AuthenticationFlowProps {
   onAuthComplete?: (user: { wallet_address: string; name?: string; email?: string; profile_completed: boolean } | null) => void
@@ -14,6 +16,7 @@ interface UserProfile {
   email?: string
   profile_completed: boolean
   marketing_consent?: boolean
+  is_admin?: boolean
 }
 
 export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) {
@@ -109,7 +112,18 @@ export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) 
   }
 
   return (
-    <>
+    <div className="flex items-center gap-4">
+      {/* fix: show admin link if user is authenticated and is admin (Cursor Rule 5) */}
+      {currentUser?.is_admin && (
+        <Link 
+          href="/admin" 
+          className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+        >
+          <Shield className="h-4 w-4" />
+          Admin
+        </Link>
+      )}
+      
       <ConnectButton onAuthSuccess={handleAuthSuccess} />
       
       {showProfileModal && currentUser && (
@@ -119,6 +133,6 @@ export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) 
           walletAddress={currentUser.wallet_address}
         />
       )}
-    </>
+    </div>
   )
 } 

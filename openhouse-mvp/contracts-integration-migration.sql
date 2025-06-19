@@ -1,6 +1,9 @@
 -- OpenHouse Smart Contract Integration Migration
 -- Adds tables for PropertyShareToken, YieldDistributor, and OrderBookExchange integration
 
+-- fix: just add is_admin column to existing users table (Cursor Rule 7)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
+
 -- fix: add token_contract_address to existing properties table (Cursor Rule 4)
 ALTER TABLE properties 
 ADD COLUMN IF NOT EXISTS token_contract_address TEXT,
