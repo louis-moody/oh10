@@ -255,6 +255,7 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
             <DialogDescription>
               Choose a wallet to connect to OpenHouse
             </DialogDescription>
+            
           </DialogHeader>
 
           <div className="space-y-4">
