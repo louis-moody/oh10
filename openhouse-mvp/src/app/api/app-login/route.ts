@@ -22,11 +22,16 @@ export async function POST(request: NextRequest) {
 
     // fix: verify SIWE message signature (Cursor Rule 5)
     const siweMessage = new SiweMessage(message)
+    console.log('SIWE message:', message)
+    console.log('Signature:', signature)
+    
     const fields = await siweMessage.verify({ signature })
+    console.log('SIWE verification result:', fields)
 
     if (!fields.success) {
+      console.error('SIWE verification failed:', fields.error)
       return NextResponse.json(
-        { error: 'Invalid signature' },
+        { error: 'Invalid signature', details: fields.error?.type || 'Unknown SIWE error' },
         { status: 401 }
       )
     }
@@ -53,6 +58,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (userError) {
+      console.error('User creation error:', userError)
       return NextResponse.json(
         { error: 'Failed to create user record' },
         { status: 500 }
@@ -72,7 +78,7 @@ export async function POST(request: NextRequest) {
     const sessionId = randomUUID()
     const jwtId = randomUUID() // JWT identifier for session tracking
     
-    const { error: sessionError, data: sessionData } = await supabaseAdmin
+    const { error: sessionError } = await supabaseAdmin
       .from('active_sessions')
       .insert({
         id: sessionId,
@@ -86,6 +92,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (sessionError) {
+      console.error('Session creation error:', sessionError)
       return NextResponse.json(
         { error: 'Failed to create session' },
         { status: 500 }
@@ -115,8 +122,9 @@ export async function POST(request: NextRequest) {
     return response
 
   } catch (error) {
+    console.error('Login error:', error)
     return NextResponse.json(
-      { error: 'Authentication failed' },
+      { error: 'Authentication failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

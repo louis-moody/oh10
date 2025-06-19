@@ -54,7 +54,7 @@ export default function HomePage() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
       setError(errorMessage)
-      console.error('Error fetching properties:', err)
+
     } finally {
       setIsLoading(false)
     }

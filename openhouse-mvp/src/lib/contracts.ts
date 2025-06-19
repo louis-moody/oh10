@@ -373,7 +373,7 @@ export async function getPropertyTokenInfo(
       totalMinted: result[6]
     };
   } catch (error) {
-    console.error('Failed to fetch property token info:', error);
+
     return null;
   }
 }
@@ -409,7 +409,7 @@ export async function getFundingProgress(
       remainingShares: tokenInfo.totalShares - tokenInfo.totalMinted
     };
   } catch (error) {
-    console.error('Failed to fetch funding progress:', error);
+
     return null;
   }
 }
@@ -432,7 +432,7 @@ export async function getUserTokenBalance(
 
     return balance;
   } catch (error) {
-    console.error('Failed to fetch user token balance:', error);
+
     return null;
   }
 }
@@ -468,7 +468,7 @@ export async function getUserUsdcInfo(
 
     return { balance, allowance };
   } catch (error) {
-    console.error('Failed to fetch USDC info:', error);
+
     return null;
   }
 }
@@ -571,7 +571,7 @@ export async function getYieldDistributionInfo(
       userPendingYield: userPendingYield as bigint,
     };
   } catch (error) {
-    console.error('Error fetching yield distribution info:', error);
+
     return null;
   }
 }
@@ -603,7 +603,7 @@ export async function getDistributionRoundInfo(
       claimsCount: roundInfo[7],
     };
   } catch (error) {
-    console.error('Error fetching distribution round info:', error);
+
     return null;
   }
 }
@@ -627,7 +627,7 @@ export async function getUserPendingYieldForRound(
 
     return pendingYield as bigint;
   } catch (error) {
-    console.error('Error fetching pending yield for round:', error);
+
     return null;
   }
 }

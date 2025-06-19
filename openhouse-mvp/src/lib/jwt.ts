@@ -39,7 +39,7 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
     }
   } catch (error) {
     // fix: fail silently for invalid tokens, no logging of sensitive data (Rule 3)
-    console.error('JWT verification failed:', error instanceof Error ? error.message : 'Unknown error')
+
     return null
   }
 } 

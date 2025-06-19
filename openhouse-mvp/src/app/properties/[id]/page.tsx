@@ -104,7 +104,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
       setError(errorMessage)
-      console.error('Error fetching property details:', err)
+
     } finally {
       setIsLoading(false)
     }
@@ -137,7 +137,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         setExistingReservation(null)
       }
     } catch (error) {
-      console.error('Error fetching user reservation:', error)
+
       // Silently fail - user might not be authenticated
     }
   }

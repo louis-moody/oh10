@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from './components/Providers'
 import { AuthenticationFlow } from './components/AuthenticationFlow'
+import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +45,7 @@ export default function RootLayout({
             <header className="border-b border-openhouse-border/20 bg-openhouse-bg/80 backdrop-blur-sm sticky top-0 z-50">
               <div className="container mx-auto px-4 py-4 flex justify-between items-center">
                 <h1 className="font-heading text-xl font-bold text-openhouse-fg">
-                  OpenHouse
+                  <Link href="/">OpenHouse</Link>
                 </h1>
                 <AuthenticationFlow />
               </div>

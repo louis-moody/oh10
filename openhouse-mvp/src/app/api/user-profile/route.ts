@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     // fix: fetch user data using proper schema (Cursor Rule 4)
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, wallet_address, name, email, profile_completed, marketing_consent, created_at')
+      .select('id, wallet_address, name, email, profile_completed, marketing_consent, created_at, is_admin')
       .eq('wallet_address', walletAddress)
       .single()
 
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       user: userData
     })
 
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

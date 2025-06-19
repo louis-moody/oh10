@@ -60,14 +60,8 @@ export default function AdminDashboard() {
 
       const { user } = await response.json()
       
-      // fix: check is_admin flag from users table (Cursor Rule 4)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('is_admin')
-        .eq('wallet_address', user.wallet_address)
-        .single()
-
-      if (userError || !userData?.is_admin) {
+      // fix: use is_admin from API response instead of double-checking (Cursor Rule 7)
+      if (!user.is_admin) {
         router.push('/')
         return
       }
@@ -75,8 +69,7 @@ export default function AdminDashboard() {
       setIsAdmin(true)
       await fetchProperties()
 
-    } catch (err) {
-      console.error('Admin access check error:', err)
+    } catch {
       router.push('/')
     }
   }
@@ -140,7 +133,6 @@ export default function AdminDashboard() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch properties'
       setError(errorMessage)
-      console.error('Error fetching properties:', err)
     } finally {
       setIsLoading(false)
     }
@@ -165,13 +157,11 @@ export default function AdminDashboard() {
         throw new Error(result.error || 'Failed to collect USDC')
       }
 
-      console.log('USDC collection result:', result)
       await fetchProperties() // Refresh data
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to collect USDC'
       setError(errorMessage)
-      console.error('USDC collection error:', err)
     } finally {
       setIsProcessing(null)
     }
@@ -196,13 +186,11 @@ export default function AdminDashboard() {
         throw new Error(result.error || 'Failed to deploy token')
       }
 
-      console.log('Token deployment result:', result)
       await fetchProperties() // Refresh data
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to deploy token'
       setError(errorMessage)
-      console.error('Token deployment error:', err)
     } finally {
       setIsProcessing(null)
     }

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { SiweMessage } from 'siwe'
 import { Button } from './ui/button'
 import {
@@ -14,6 +14,7 @@ import {
 } from './ui/dialog'
 import { Wallet, LogOut, Loader2 } from 'lucide-react'
 import type { Connector } from 'wagmi'
+import { Badge } from './ui/badge'
 
 interface ConnectButtonProps {
   onAuthSuccess?: (walletAddress: string) => void
@@ -30,22 +31,23 @@ interface WalletOption {
 
 export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [walletOptions, setWalletOptions] = useState<WalletOption[]>([])
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
-  const [walletOptions, setWalletOptions] = useState<WalletOption[]>([])
   const [isMounted, setIsMounted] = useState(false)
 
-  const { address, isConnected } = useAccount()
-  const { connect, connectors } = useConnect()
+  const { address, isConnected, connector } = useAccount()
+  const { connectors, connect } = useConnect()
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
+  const chainId = useChainId()
 
-  // fix: ensure client-side only execution to prevent hydration mismatch (Cursor Rule 6)
+  // fix: prevent hydration mismatch (Cursor Rule 6)
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  // fix: detect specific wallets as per PRD requirements (Cursor Rule 4)
+  // fix: detect available wallets when component mounts (Cursor Rule 4)
   useEffect(() => {
     if (!isMounted) return // Prevent SSR mismatch
     
@@ -54,20 +56,12 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ethereum = (window as any).ethereum
       
-      // fix: debug connector information (Cursor Rule 6)
-      console.log('Available connectors:', connectors.map(c => ({ id: c.id, name: c.name, ready: c.ready })))
-      console.log('Window ethereum:', ethereum)
-      
       // fix: improved wallet detection (Cursor Rule 4)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hasMetaMask = !!ethereum?.isMetaMask || !!(ethereum?.providers?.find((p: any) => p.isMetaMask))
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hasTrust = !!ethereum?.isTrust || !!(ethereum?.providers?.find((p: any) => p.isTrust))
       const hasInjected = !!ethereum
-      
-      console.log('MetaMask detected:', hasMetaMask)
-      console.log('Trust detected:', hasTrust)
-      console.log('Injected detected:', hasInjected)
 
       const options: WalletOption[] = [
         {
@@ -95,32 +89,20 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
           connector: connectors.find(c => c.id === 'injected')
         }
       ]
-
-      // fix: debug filtered options with connector details (Cursor Rule 6)
-      console.log('Wallet options before filter:', options.map(o => ({ 
-        name: o.name, 
-        isAvailable: o.isAvailable, 
-        connectorId: o.connector?.id,
-        connectorName: o.connector?.name 
-      })))
       
       // fix: show available wallets even if connector not found (Cursor Rule 4)
       const filteredOptions = options.filter(option => {
         if (option.id === 'coinbaseWallet') return true // Always show Coinbase
         return option.isAvailable
       })
-      
-      console.log('Wallet options after filter:', filteredOptions.map(o => ({ 
-        name: o.name, 
-        connectorId: o.connector?.id,
-        connectorName: o.connector?.name 
-      })))
 
       setWalletOptions(filteredOptions)
     }
 
     detectWallets()
   }, [connectors, isMounted])
+
+
 
   const handleConnect = async (walletOption: WalletOption) => {
     try {
@@ -145,12 +127,8 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
         throw new Error(`No connector found for ${walletOption.name}. Please make sure the wallet is installed.`)
       }
 
-      // fix: debug connection attempt (Cursor Rule 6)
-      console.log('Attempting to connect with:', walletOption.name, connector.id)
       connect({ connector })
     } catch (error) {
-      // fix: better error logging (Cursor Rule 6)
-      console.error('Connection error:', error)
       setAuthError(`Failed to connect ${walletOption.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
@@ -161,12 +139,10 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     try {
       setIsAuthenticating(true)
       setAuthError(null)
-      console.log('🔐 Starting authentication for address:', address)
 
       // fix: create SIWE message (Cursor Rule 5)
       const isDevelopment = process.env.NODE_ENV === 'development'
       const chainId = isDevelopment ? 84532 : 8453 // Base Sepolia for dev, Base mainnet for prod
-      console.log('🌐 Using chainId:', chainId, isDevelopment ? '(Base Sepolia)' : '(Base Mainnet)')
       
       const message = new SiweMessage({
         domain: window.location.host,
@@ -180,22 +156,13 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       })
 
       const messageString = message.prepareMessage()
-      console.log('📝 SIWE message created:', {
-        domain: message.domain,
-        address: message.address,
-        chainId: message.chainId,
-        messageLength: messageString.length
-      })
       
       // fix: sign message with wallet (Cursor Rule 5)
-      console.log('✍️ Requesting signature from wallet...')
       const signature = await signMessageAsync({
         message: messageString
       })
-      console.log('✅ Message signed successfully, signature length:', signature.length)
 
       // fix: send to authentication endpoint (Cursor Rule 5)
-      console.log('📡 Sending authentication request to /api/app-login...')
       const response = await fetch('/api/app-login', {
         method: 'POST',
         headers: {
@@ -207,21 +174,17 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
         })
       })
 
-      console.log('📡 API response status:', response.status)
       const result = await response.json()
-      console.log('📡 API response data:', result)
 
       if (!response.ok) {
         throw new Error(result.error || 'Authentication failed')
       }
 
       // fix: success callback and close modal (Cursor Rule 7)
-      console.log('🎉 Authentication successful!')
       setIsModalOpen(false)
       onAuthSuccess?.(result.wallet_address)
 
     } catch (error) {
-      console.error('💥 Authentication error:', error)
       setAuthError(error instanceof Error ? error.message : 'Authentication failed')
     } finally {
       setIsAuthenticating(false)
@@ -238,7 +201,6 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       disconnect()
       onAuthSuccess?.('')
     } catch (error) {
-      console.error('Logout error:', error)
       // fix: still disconnect wallet even if API fails (Cursor Rule 6)
       disconnect()
     }
@@ -247,110 +209,119 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   // fix: prevent hydration mismatch by not rendering until mounted (Cursor Rule 6)
   if (!isMounted) {
     return (
-      <Button variant="default" className="gap-2" disabled>
-        <Wallet className="w-4 h-4" />
+      <Button variant="outline" disabled>
+        <Wallet className="w-4 h-4 mr-2" />
         Loading...
       </Button>
     )
   }
 
-  // fix: show disconnect button only when both connected AND authenticated (Cursor Rule 7)
-  // We know user is authenticated if they've completed the flow successfully
+  // fix: only show connected state if modal is closed and user is authenticated (Cursor Rule 7)
   if (isConnected && address && !isModalOpen) {
-    // Only show disconnect button if modal is closed (meaning auth completed)
     return (
-      <Button
-        variant="outline"
-        onClick={handleDisconnect}
-        className="gap-2"
-      >
-        <LogOut className="w-4 h-4" />
-        {`${address.slice(0, 6)}...${address.slice(-4)}`}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className="px-3 py-1">
+          {address.slice(0, 6)}...{address.slice(-4)}
+        </Badge>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDisconnect}
+          className="flex items-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Disconnect
+        </Button>
+      </div>
     )
   }
 
   return (
-    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-      <DialogTrigger asChild>
-        <Button variant="default" className="gap-2">
-          <Wallet className="w-4 h-4" />
-          Connect Wallet
-        </Button>
-      </DialogTrigger>
-      
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Wallet className="w-5 h-5" />
-            Connect Wallet
-          </DialogTitle>
-          <DialogDescription>
-            Choose a wallet to connect to OpenHouse
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Button 
+        onClick={() => setIsModalOpen(true)}
+        className="flex items-center gap-2"
+      >
+        Connect Wallet
+      </Button>
 
-        <div className="space-y-4">
-          {!isConnected ? (
-            <div className="space-y-2">
-              {walletOptions.map((walletOption) => (
-                <Button
-                  key={walletOption.id}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => handleConnect(walletOption)}
-                  disabled={!walletOption.isAvailable && walletOption.id !== 'coinbaseWallet'}
-                >
-                  {walletOption.name}
-                  {!walletOption.isAvailable && walletOption.id !== 'coinbaseWallet' && (
-                    <span className="ml-auto text-xs text-muted-foreground">Not installed</span>
-                  )}
-                </Button>
-              ))}
-              {walletOptions.length === 0 && (
-                <div className="text-center p-4 text-sm text-muted-foreground">
-                  No supported wallets detected. Please install MetaMask, Coinbase Wallet, or Trust Wallet.
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="w-5 h-5" />
+              Connect Wallet
+            </DialogTitle>
+            <DialogDescription>
+              Choose a wallet to connect to OpenHouse
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Wallet connection phase */}
+            {!isConnected && (
+              <div className="space-y-3">
+                <p className="text-sm text-openhouse-fg-muted">
+                  Choose your wallet to connect to OpenHouse
+                </p>
+                
+                {walletOptions.map((option) => (
+                  <Button
+                    key={option.id}
+                    variant="outline"
+                    className="w-full justify-start h-12"
+                    onClick={() => handleConnect(option)}
+                    disabled={!option.isAvailable}
+                  >
+                    <Wallet className="w-5 h-5 mr-3" />
+                    <span>{option.name}</span>
+                    {!option.isAvailable && (
+                      <Badge variant="secondary" className="ml-auto">
+                        Not Available
+                      </Badge>
+                    )}
+                  </Button>
+                ))}
+              </div>
+            )}
+
+            {/* Authentication phase */}
+            {isConnected && address && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <p className="text-sm text-openhouse-fg-muted mb-2">
+                    Connected to {connector?.name}
+                  </p>
+                  <Badge variant="outline" className="px-3 py-1">
+                    {address.slice(0, 6)}...{address.slice(-4)}
+                  </Badge>
                 </div>
-              )}
-              <div className="text-xs text-center text-muted-foreground mt-2">
-                Install wallet extensions to see more options
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-center p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Connected to {address?.slice(0, 6)}...{address?.slice(-4)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Sign a message to authenticate
-                </p>
-              </div>
-              
-              <Button
-                onClick={handleAuthenticate}
-                disabled={isAuthenticating}
-                className="w-full"
-              >
-                {isAuthenticating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Authenticating...
-                  </>
-                ) : (
-                  'Sign Message'
-                )}
-              </Button>
-            </div>
-          )}
 
-          {authError && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-              <p className="text-sm text-destructive">{authError}</p>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+                <div className="space-y-3">
+                  <p className="text-sm text-openhouse-fg-muted">
+                    Sign a message to authenticate your wallet with OpenHouse
+                  </p>
+                  
+                  <Button
+                    onClick={handleAuthenticate}
+                    disabled={isAuthenticating}
+                    className="w-full"
+                  >
+                    {isAuthenticating ? 'Signing...' : 'Sign Message'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Error display */}
+            {authError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{authError}</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 } 

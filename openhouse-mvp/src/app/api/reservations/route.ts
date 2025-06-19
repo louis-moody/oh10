@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
       message: 'Reservation successful! Your USDC approval has been recorded.'
     })
 
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -327,7 +327,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Reservation cancelled successfully'
     })
 
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -409,7 +409,7 @@ export async function GET(request: NextRequest) {
       reservations: reservations || []
     })
 
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

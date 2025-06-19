@@ -53,7 +53,7 @@ export function ProfileCompleteModal({ isOpen, onComplete, walletAddress }: Prof
         marketingConsent
       })
     } catch (error) {
-      console.error('Profile completion error:', error)
+
       // Handle error - could show toast notification
     } finally {
       setIsSubmitting(false)
