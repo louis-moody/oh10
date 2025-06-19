@@ -1,6 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
+import { createPublicClient, http, parseAbi, isAddress, decodeEventLog } from 'viem'
+import { baseSepolia } from 'viem/chains'
+
+// fix: add USDC contract ABI for approval verification (Cursor Rule 4)
+const USDC_ABI = parseAbi([
+  'event Approval(address indexed owner, address indexed spender, uint256 value)'
+])
+
+// fix: get environment variables for on-chain verification (Cursor Rule 4)
+function getUSDCContractAddress(): string {
+  const address = process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS
+  if (!address || !isAddress(address)) {
+    throw new Error('USDC contract address not configured or invalid')
+  }
+  return address
+}
+
+function getTreasuryAddress(): string {
+  const address = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
+  if (!address || !isAddress(address)) {
+    throw new Error('Treasury address not configured or invalid')
+  }
+  return address
+}
+
+// fix: verify USDC approval on-chain before accepting reservation (Cursor Rule 4)
+async function verifyUSDCApproval(
+  approvalHash: string,
+  expectedOwner: string,
+  expectedAmount: number
+): Promise<{ isValid: boolean; error?: string }> {
+  try {
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http()
+    })
+
+    const usdcAddress = getUSDCContractAddress()
+    const treasuryAddress = getTreasuryAddress()
+
+    // fix: get transaction receipt to verify it exists and succeeded (Cursor Rule 4)
+    const receipt = await publicClient.getTransactionReceipt({ 
+      hash: approvalHash as `0x${string}` 
+    })
+
+    if (receipt.status !== 'success') {
+      return { isValid: false, error: 'Transaction failed on-chain' }
+    }
+
+    // fix: parse approval events from the transaction logs (Cursor Rule 4)
+    const approvalLogs = receipt.logs.filter(log => 
+      log.address.toLowerCase() === usdcAddress.toLowerCase()
+    )
+
+    if (approvalLogs.length === 0) {
+      return { isValid: false, error: 'No USDC events found in transaction' }
+    }
+
+    // fix: decode approval events and validate parameters (Cursor Rule 4)
+    for (const log of approvalLogs) {
+      try {
+        const decoded = decodeEventLog({
+          abi: USDC_ABI,
+          data: log.data,
+          topics: log.topics
+        })
+
+        if (decoded.eventName === 'Approval') {
+          const { owner, spender, value } = decoded.args as {
+            owner: string
+            spender: string
+            value: bigint
+          }
+
+          // fix: verify approval parameters match reservation (Cursor Rule 4)
+          const ownerMatches = owner.toLowerCase() === expectedOwner.toLowerCase()
+          const spenderMatches = spender.toLowerCase() === treasuryAddress.toLowerCase()
+          const amountMatches = Number(value) >= (expectedAmount * 1_000_000) // USDC has 6 decimals
+
+          if (ownerMatches && spenderMatches && amountMatches) {
+            return { isValid: true }
+          }
+        }
+      } catch (decodeError) {
+        // fix: continue checking other logs if one fails to decode (Cursor Rule 6)
+        continue
+      }
+    }
+
+    return { isValid: false, error: 'No matching approval event found' }
+
+  } catch (error) {
+    return { isValid: false, error: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}` }
+  }
+}
 
 interface CreateReservationRequest {
   property_id: string
@@ -59,12 +154,26 @@ export async function POST(request: NextRequest) {
     const { property_id, usdc_amount, token_amount, approval_hash } = body
 
     // fix: validate approval hash is provided (Cursor Rule 4)
-    if (!approval_hash || approval_hash === '0x' || approval_hash.length < 10) {
+    if (!approval_hash || approval_hash === '0x' || approval_hash.length !== 66) {
       return NextResponse.json(
-        { error: 'Valid USDC approval transaction hash required' },
+        { error: 'Valid USDC approval transaction hash required (66 characters starting with 0x)' },
         { status: 400 }
       )
     }
+
+    // fix: verify USDC approval on-chain before proceeding (Cursor Rule 4)
+    console.log(`Verifying USDC approval: ${approval_hash} for wallet ${walletAddress} amount ${usdc_amount}`)
+    const verificationResult = await verifyUSDCApproval(approval_hash, walletAddress, usdc_amount)
+    
+    if (!verificationResult.isValid) {
+      console.log(`USDC approval verification failed: ${verificationResult.error}`)
+      return NextResponse.json(
+        { error: `Invalid USDC approval: ${verificationResult.error}` },
+        { status: 400 }
+      )
+    }
+    
+    console.log(`USDC approval verified successfully for ${walletAddress}`)
 
     // fix: validate request data (Cursor Rule 6)
     if (!property_id || !usdc_amount || !token_amount) {
@@ -165,7 +274,7 @@ export async function POST(request: NextRequest) {
       .eq('wallet_address', walletAddress)
       .single()
 
-    // fix: create reservation using proper schema with wallet approval (Cursor Rule 4)
+    // fix: create reservation using proper schema with verified approval (Cursor Rule 4)
     const reservationData = {
       user_id: user.id, // fix: include user_id for proper foreign key relationship (Cursor Rule 4)
       property_id,
@@ -175,7 +284,7 @@ export async function POST(request: NextRequest) {
       token_amount: token_amount,
       approval_hash: approval_hash,
       approval_timestamp: new Date().toISOString(),
-      payment_status: 'approved' // Approved because user has already approved USDC spend
+      payment_status: 'approved' // fix: approved only after on-chain verification (Cursor Rule 4)
     }
 
     let reservation

@@ -219,14 +219,16 @@ export default function AdminDashboard() {
   }
 
   const canCollectUsdc = (property: PropertyWithFunding) => {
-    return property.status === 'active' && 
-           property.progress_percentage >= 100 &&
-           !property.token_contract_address
+    // fix: enable USDC collection when token is deployed and property is funded (Cursor Rule 4)
+    return property.status === 'funded' && 
+           property.token_contract_address // Token must be deployed first
   }
 
   const canDeployToken = (property: PropertyWithFunding) => {
-    return property.status === 'funded' && 
-           property.token_contract_address
+    // fix: enable token deployment when funding goal is 100% met and property is active (Cursor Rule 4)
+    return property.status === 'active' && 
+           property.progress_percentage >= 100 &&
+           !property.token_contract_address // Not yet deployed
   }
 
   if (!isAdmin) {
