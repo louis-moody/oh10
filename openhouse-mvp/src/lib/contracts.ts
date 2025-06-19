@@ -292,7 +292,7 @@ export const USDC_ABI = [
 // fix: contract addresses for Base networks (Cursor Rule 4)
 export const CONTRACT_ADDRESSES = {
   USDC: {
-    BASE_SEPOLIA: "0x036CbD53842c542668d858Cdf5Ff6eC9C2FcA5D7" as `0x${string}`,
+    BASE_SEPOLIA: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
     BASE_MAINNET: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as `0x${string}`
   }
 } as const;

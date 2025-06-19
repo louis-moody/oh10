@@ -33,14 +33,22 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [walletOptions, setWalletOptions] = useState<WalletOption[]>([])
+  const [isMounted, setIsMounted] = useState(false)
 
   const { address, isConnected } = useAccount()
   const { connect, connectors } = useConnect()
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
 
+  // fix: ensure client-side only execution to prevent hydration mismatch (Cursor Rule 6)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   // fix: detect specific wallets as per PRD requirements (Cursor Rule 4)
   useEffect(() => {
+    if (!isMounted) return // Prevent SSR mismatch
+    
     const detectWallets = () => {
       // fix: safely access window.ethereum with proper typing (Cursor Rule 6)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,33 +57,41 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       // fix: debug connector information (Cursor Rule 6)
       console.log('Available connectors:', connectors.map(c => ({ id: c.id, name: c.name, ready: c.ready })))
       console.log('Window ethereum:', ethereum)
-      console.log('MetaMask detected:', !!ethereum?.isMetaMask)
-      console.log('Trust detected:', !!ethereum?.isTrust)
+      
+      // fix: improved wallet detection (Cursor Rule 4)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hasMetaMask = !!ethereum?.isMetaMask || !!(ethereum?.providers?.find((p: any) => p.isMetaMask))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hasTrust = !!ethereum?.isTrust || !!(ethereum?.providers?.find((p: any) => p.isTrust))
+      const hasInjected = !!ethereum
+      
+      console.log('MetaMask detected:', hasMetaMask)
+      console.log('Trust detected:', hasTrust)
+      console.log('Injected detected:', hasInjected)
 
       const options: WalletOption[] = [
         {
           name: 'MetaMask',
           id: 'metamask',
-          isAvailable: !!ethereum?.isMetaMask,
+          isAvailable: hasMetaMask,
+          connector: connectors.find(c => c.id === 'metaMask' || c.id === 'metaMaskSDK')
+        },
+        {
+          name: 'Trust Wallet',
+          id: 'trustWallet',
+          isAvailable: hasTrust,
           connector: connectors.find(c => c.id === 'injected')
         },
         {
           name: 'Coinbase Wallet',
           id: 'coinbaseWallet',
-          isAvailable: true, // Always available via OnchainKit
-          // fix: try multiple possible connector IDs for Coinbase (Cursor Rule 6)
-          connector: connectors.find(c => c.id === 'coinbaseWalletSDK') || connectors.find(c => c.id === 'coinbaseWallet') || connectors.find(c => c.name?.includes('Coinbase'))
+          isAvailable: true, // Always available
+          connector: connectors.find(c => c.id === 'coinbaseWalletSDK' || c.id === 'coinbaseWallet' || c.name?.includes('Coinbase'))
         },
         {
-          name: 'Trust Wallet',
-          id: 'trustWallet',
-          isAvailable: !!ethereum?.isTrust,
-          connector: connectors.find(c => c.id === 'injected')
-        },
-        {
-          name: 'Other Wallet',
+          name: 'Connect Wallet',
           id: 'generic',
-          isAvailable: !!ethereum && !ethereum?.isMetaMask && !ethereum?.isTrust,
+          isAvailable: hasInjected && !hasMetaMask && !hasTrust,
           connector: connectors.find(c => c.id === 'injected')
         }
       ]
@@ -87,7 +103,13 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
         connectorId: o.connector?.id,
         connectorName: o.connector?.name 
       })))
-      const filteredOptions = options.filter(option => option.isAvailable && option.connector)
+      
+      // fix: show available wallets even if connector not found (Cursor Rule 4)
+      const filteredOptions = options.filter(option => {
+        if (option.id === 'coinbaseWallet') return true // Always show Coinbase
+        return option.isAvailable
+      })
+      
       console.log('Wallet options after filter:', filteredOptions.map(o => ({ 
         name: o.name, 
         connectorId: o.connector?.id,
@@ -98,16 +120,34 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     }
 
     detectWallets()
-  }, [connectors])
+  }, [connectors, isMounted])
 
   const handleConnect = async (walletOption: WalletOption) => {
-    if (!walletOption.connector) return
-
     try {
       setAuthError(null)
+      
+      // fix: fallback to injected connector if specific connector not found (Cursor Rule 4)
+      let connector = walletOption.connector
+      if (!connector) {
+        // fix: try to find appropriate connector as fallback (Cursor Rule 6)
+        if (walletOption.id === 'metamask') {
+          connector = connectors.find(c => c.id === 'metaMask') || connectors.find(c => c.id === 'injected')
+        } else if (walletOption.id === 'trustWallet') {
+          connector = connectors.find(c => c.id === 'injected')
+        } else if (walletOption.id === 'coinbaseWallet') {
+          connector = connectors.find(c => c.id === 'coinbaseWalletSDK' || c.name?.includes('Coinbase'))
+        } else {
+          connector = connectors.find(c => c.id === 'injected')
+        }
+      }
+      
+      if (!connector) {
+        throw new Error(`No connector found for ${walletOption.name}. Please make sure the wallet is installed.`)
+      }
+
       // fix: debug connection attempt (Cursor Rule 6)
-      console.log('Attempting to connect with:', walletOption.name, walletOption.connector.id)
-      connect({ connector: walletOption.connector })
+      console.log('Attempting to connect with:', walletOption.name, connector.id)
+      connect({ connector })
     } catch (error) {
       // fix: better error logging (Cursor Rule 6)
       console.error('Connection error:', error)
@@ -204,6 +244,16 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     }
   }
 
+  // fix: prevent hydration mismatch by not rendering until mounted (Cursor Rule 6)
+  if (!isMounted) {
+    return (
+      <Button variant="default" className="gap-2" disabled>
+        <Wallet className="w-4 h-4" />
+        Loading...
+      </Button>
+    )
+  }
+
   // fix: show disconnect button only when both connected AND authenticated (Cursor Rule 7)
   // We know user is authenticated if they've completed the flow successfully
   if (isConnected && address && !isModalOpen) {
@@ -249,8 +299,12 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => handleConnect(walletOption)}
+                  disabled={!walletOption.isAvailable && walletOption.id !== 'coinbaseWallet'}
                 >
                   {walletOption.name}
+                  {!walletOption.isAvailable && walletOption.id !== 'coinbaseWallet' && (
+                    <span className="ml-auto text-xs text-muted-foreground">Not installed</span>
+                  )}
                 </Button>
               ))}
               {walletOptions.length === 0 && (
@@ -258,6 +312,9 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
                   No supported wallets detected. Please install MetaMask, Coinbase Wallet, or Trust Wallet.
                 </div>
               )}
+              <div className="text-xs text-center text-muted-foreground mt-2">
+                Install wallet extensions to see more options
+              </div>
             </div>
           ) : (
             <div className="space-y-4">

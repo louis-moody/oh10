@@ -19,24 +19,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  const payload = verifyJWT(token)
+  const payload = await verifyJWT(token)
 
   if (!payload || !supabaseAdmin) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
   try {
-    // fix: validate session using direct table lookup (Cursor Rule 3)
-    const { data: sessionData, error } = await supabaseAdmin
-      .from('active_sessions')
-      .select('*')
-      .eq('id', payload.session_id)
-      .eq('wallet_address', payload.wallet_address)
-      .eq('revoked', false)
-      .gt('expires_at', new Date().toISOString())
-      .single()
+    // fix: validate session using RPC function (Cursor Rule 3)
+    const { data: sessionValid, error } = await supabaseAdmin
+      .rpc('is_valid_session', { 
+        wallet_addr: payload.wallet_address 
+      })
 
-    const isValid = !error && sessionData
+    const isValid = !error && sessionValid
 
     if (error || !isValid) {
       // fix: clear invalid session cookie (Cursor Rule 3)

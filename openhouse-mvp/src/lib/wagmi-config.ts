@@ -1,22 +1,32 @@
 import { createConfig, http } from 'wagmi'
 import { base, baseSepolia } from 'wagmi/chains'
-import { coinbaseWallet, injected } from 'wagmi/connectors'
+import { coinbaseWallet, injected, metaMask } from 'wagmi/connectors'
 
 const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC
 
-// fix: Full DeFi approach - support ALL wallets without forcing Coinbase accounts (Cursor Rule 2)
+// fix: Support MetaMask, Trust Wallet, and Coinbase Wallet with proper detection (Cursor Rule 2)
 export const config = createConfig({
   chains: [baseSepolia, base],
   connectors: [
+    // fix: MetaMask-specific connector for better detection (Cursor Rule 4)
+    metaMask({
+      dappMetadata: {
+        name: 'OpenHouse',
+        url: 'https://openhouse.com',
+        iconUrl: 'https://framerusercontent.com/images/oyE24xB8znyNiw81BGD9SRiFs.png',
+      },
+    }),
+    // fix: Generic injected connector for Trust Wallet and others (Cursor Rule 4)
     injected({
       shimDisconnect: true,
     }),
+    // fix: Coinbase Wallet connector (Cursor Rule 4)
     coinbaseWallet({
       appName: 'OpenHouse',
       appLogoUrl: 'https://framerusercontent.com/images/oyE24xB8znyNiw81BGD9SRiFs.png',
-      preference: 'all', // Support ALL wallet types - DeFi first!
+      preference: 'all',
       version: '4',
-      headlessMode: false, // Show Coinbase UI for smart wallet creation
+      headlessMode: false,
     }),
   ],
   transports: {

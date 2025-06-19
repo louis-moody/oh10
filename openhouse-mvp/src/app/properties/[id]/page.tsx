@@ -24,7 +24,13 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   const [error, setError] = useState<string | null>(null)
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false)
   const [fundingProgress, setFundingProgress] = useState({ raised_amount: 0, progress_percentage: 0 })
-  const { isConnected } = useAccount()
+  const [existingReservation, setExistingReservation] = useState<{
+    id: string
+    usdc_amount: number
+    token_amount: number
+    payment_status: string
+  } | null>(null)
+  const { isConnected, address } = useAccount()
   const [propertyId, setPropertyId] = useState<string>('')
 
   useEffect(() => {
@@ -35,6 +41,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
     getParams()
   }, [params])
+
+  // fix: fetch user reservation when wallet connects (Cursor Rule 4)
+  useEffect(() => {
+    if (propertyId && address && isConnected) {
+      fetchUserReservation(propertyId, address)
+    } else if (!isConnected) {
+      setExistingReservation(null)
+    }
+  }, [propertyId, address, isConnected])
 
   const fetchPropertyDetails = async (id: string) => {
     try {
@@ -69,7 +84,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         .from('payment_authorizations')
         .select('usdc_amount')
         .eq('property_id', id)
-        .eq('payment_status', 'approved')
+        .in('payment_status', ['approved', 'transferred'])
 
       if (!authError && authData) {
         const raisedAmount = authData.reduce((sum, auth) => sum + parseFloat(auth.usdc_amount), 0)
@@ -81,12 +96,49 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         })
       }
 
+      // fix: fetch user's existing reservation if connected (Cursor Rule 4)
+      if (address) {
+        await fetchUserReservation(id, address)
+      }
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
       setError(errorMessage)
       console.error('Error fetching property details:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // fix: fetch user's existing reservation via API (Cursor Rule 4)
+  const fetchUserReservation = async (propertyId: string, walletAddress: string) => {
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'GET',
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        // Silently fail if not authenticated or no reservations
+        return
+      }
+
+      const data = await response.json()
+      const userReservation = data.reservations?.find((r: any) => r.property_id === propertyId)
+      
+      if (userReservation) {
+        setExistingReservation({
+          id: userReservation.id,
+          usdc_amount: userReservation.usdc_amount,
+          token_amount: userReservation.token_amount,
+          payment_status: userReservation.payment_status
+        })
+      } else {
+        setExistingReservation(null)
+      }
+    } catch (error) {
+      console.error('Error fetching user reservation:', error)
+      // Silently fail - user might not be authenticated
     }
   }
 
@@ -121,6 +173,13 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     if (property.status !== 'active') return false
     if (fundingProgress.progress_percentage >= 100) return false
     return true
+  }
+
+  const getReservationButtonText = () => {
+    if (!isConnected) return 'Connect Wallet to Reserve'
+    if (existingReservation) return 'View Reservation'
+    if (!canReserve()) return 'Reservation Unavailable'
+    return 'Reserve Shares'
   }
 
   const statusColors = {
@@ -216,209 +275,208 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     <div className="min-h-screen bg-openhouse-bg">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <Link 
-            href="/"
-            className="inline-flex items-center gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Properties
-          </Link>
-          
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Building2 className="w-8 h-8 text-openhouse-accent" />
-              <h1 className="font-heading text-3xl font-bold text-openhouse-fg">
-                {property.name}
-              </h1>
-            </div>
-            <Badge className={statusColors[property.status]} variant="outline">
-              {property.status}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Property Image */}
-            <Card>
-              <CardContent className="p-0">
-                <div className="aspect-[16/9] relative overflow-hidden rounded-lg">
-                  {property.image_url ? (
-                    <Image
-                      src={property.image_url}
-                      alt={property.name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 1024px) 100vw, 66vw"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
-                      <div className="w-24 h-24 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
-                        <Building2 className="w-12 h-12 text-openhouse-accent" />
+            <div className="lg:col-span-2 space-y-6">
+              {/* Property Image */}
+              <Card>
+                <CardContent className="pt-8 px-20">
+                  <div className="aspect-[1/1] relative overflow-hidden rounded-sm h-full">
+                    {property.image_url ? (
+                      <Image
+                        src={property.image_url}
+                        alt={property.name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 1024px) 100vw, 66vw"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
+                        <div className="w-24 h-24 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
+                          <Building2 className="w-12 h-12 text-openhouse-accent" />
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          {/* Main Content */}
 
-            {/* Property Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Property Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
-                    <p className="font-semibold text-openhouse-fg">
-                      {property.total_shares.toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-openhouse-fg-muted">Price per Share</p>
-                    <p className="font-semibold text-openhouse-fg">
-                      {formatCurrency(property.price_per_token)}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="pt-4 border-t border-openhouse-border">
-                  <p className="text-openhouse-fg-muted">
-                    This property represents a tokenized real estate investment opportunity. 
-                    Each token represents fractional ownership of the underlying property.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Funding Progress */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Funding Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-openhouse-fg">
-                    {fundingProgress.progress_percentage}%
-                  </p>
-                  <p className="text-sm text-openhouse-fg-muted">funded</p>
-                </div>
-                
-                <div className="w-full bg-openhouse-bg-muted rounded-full h-3">
-                  <div 
-                    className="bg-openhouse-success h-3 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-openhouse-fg-muted">Raised</span>
-                    <span className="font-medium text-openhouse-fg">
-                      {formatCurrency(fundingProgress.raised_amount)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-openhouse-fg-muted">Goal</span>
-                    <span className="font-medium text-openhouse-fg">
-                      {formatCurrency(property.funding_goal_usdc)}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Investment Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5" />
-                  Investment Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-openhouse-fg-muted">
-                    <Users className="w-4 h-4" />
-                    <span className="text-sm">Available Shares</span>
-                  </div>
-                  <span className="font-medium text-openhouse-fg">
-                    {(property.total_shares - Math.floor((fundingProgress.raised_amount / property.price_per_token))).toLocaleString()}
-                  </span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-openhouse-fg-muted">
-                    <Clock className="w-4 h-4" />
-                    <span className="text-sm">Funding Ends</span>
-                  </div>
-                  <span className={`font-medium ${isDeadlinePassed(property.funding_deadline) ? 'text-openhouse-danger' : 'text-openhouse-fg'}`}>
-                    {formatDeadline(property.funding_deadline)}
-                  </span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-openhouse-fg-muted">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-sm">Status</span>
+            <div className="lg:col-span-1 space-y-6 pl-8">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
+                      {property.name}
+                    </h1>
                   </div>
                   <Badge className={statusColors[property.status]} variant="outline">
                     {property.status}
                   </Badge>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Reserve Button */}
-            <Card>
-              <CardContent className="pt-6">
-                {!isConnected ? (
-                  <div className="text-center space-y-3">
-                    <p className="text-sm text-openhouse-fg-muted">
-                      Connect your wallet to reserve shares
-                    </p>
-                    <Button disabled className="w-full">
-                      Connect Wallet First
-                    </Button>
+              {/* Property Details */}
+              <Card>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
+                      <p className="font-semibold text-openhouse-fg">
+                        {property.total_shares.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-openhouse-fg-muted">Price per Share</p>
+                      <p className="font-semibold text-openhouse-fg">
+                        {formatCurrency(property.price_per_token)}
+                      </p>
+                    </div>
                   </div>
-                ) : canReserve() ? (
-                  <div className="space-y-3">
-                    <Button 
-                      onClick={() => setIsReservationModalOpen(true)}
-                      className="w-full bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
-                      size="lg"
-                    >
-                      Reserve Shares
-                    </Button>
-                    <p className="text-xs text-openhouse-fg-muted text-center">
-                      Reserve now, pay when funding goal is reached
+                  
+                  <div className="pt-4 border-t border-openhouse-border">
+                    <p className="text-openhouse-fg-muted">
+                      This property represents a tokenized real estate investment opportunity. 
+                      Each token represents fractional ownership of the underlying property.
                     </p>
                   </div>
-                ) : (
-                  <div className="text-center space-y-3">
-                    <p className="text-sm text-openhouse-fg-muted">
-                      {isDeadlinePassed(property.funding_deadline) 
-                        ? 'Funding deadline has passed'
-                        : property.status !== 'active'
-                        ? 'Property is not accepting reservations'
-                        : 'Funding goal reached'
-                      }
+                </CardContent>
+              </Card> 
+              
+              {/* Reserve Button */}
+              <Card>
+                <CardContent className="pt-0">
+                  {!isConnected ? (
+                    <div className="text-center space-y-3">
+                      <p className="text-sm text-openhouse-fg-muted">
+                        Connect your wallet to reserve shares
+                      </p>
+                      <Button disabled className="w-full">
+                        Connect Wallet First
+                      </Button>
+                    </div>
+                  ) : existingReservation ? (
+                    <div className="space-y-3">
+                      <Button 
+                        onClick={() => setIsReservationModalOpen(true)}
+                        className="w-full bg-openhouse-success hover:bg-openhouse-success/90 text-white"
+                        size="lg"
+                      >
+                        View Reservation
+                      </Button>
+                      <p className="text-xs text-openhouse-success text-center font-medium">
+                        ✓ You have reserved {existingReservation.token_amount} shares
+                      </p>
+                    </div>
+                  ) : canReserve() ? (
+                    <div className="space-y-3">
+                      <Button 
+                        onClick={() => setIsReservationModalOpen(true)}
+                        className="w-full bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
+                        size="lg"
+                      >
+                        Reserve Shares
+                      </Button>
+                      <p className="text-xs text-openhouse-fg-muted text-center">
+                        Reserve now, pay when funding goal is reached
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-3">
+                      <p className="text-sm text-openhouse-fg-muted">
+                        {isDeadlinePassed(property.funding_deadline) 
+                          ? 'Funding deadline has passed'
+                          : property.status !== 'active'
+                          ? 'Property is not accepting reservations'
+                          : 'Funding goal reached'
+                        }
+                      </p>
+                      <Button disabled className="w-full">
+                        Reservations Closed
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Funding Progress */}
+              <Card>
+                <CardContent className="space-y-4">
+                  <div className="text-center">
+                    <p className="text-3xl font-bold text-openhouse-fg">
+                      {fundingProgress.progress_percentage}%
                     </p>
-                    <Button disabled className="w-full">
-                      Reservations Closed
-                    </Button>
+                    <p className="text-sm text-openhouse-fg-muted">funded</p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  
+                  <div className="w-full bg-openhouse-bg-muted rounded-full h-3">
+                    <div 
+                      className="bg-openhouse-success h-3 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-openhouse-fg-muted">Raised</span>
+                      <span className="font-medium text-openhouse-fg">
+                        {formatCurrency(fundingProgress.raised_amount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-openhouse-fg-muted">Goal</span>
+                      <span className="font-medium text-openhouse-fg">
+                        {formatCurrency(property.funding_goal_usdc)}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Investment Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" />
+                    Investment Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-openhouse-fg-muted">
+                      <Users className="w-4 h-4" />
+                      <span className="text-sm">Available Shares</span>
+                    </div>
+                    <span className="font-medium text-openhouse-fg">
+                      {(property.total_shares - Math.floor((fundingProgress.raised_amount / property.price_per_token))).toLocaleString()}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-openhouse-fg-muted">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-sm">Funding Ends</span>
+                    </div>
+                    <span className={`font-medium ${isDeadlinePassed(property.funding_deadline) ? 'text-openhouse-danger' : 'text-openhouse-fg'}`}>
+                      {formatDeadline(property.funding_deadline)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-openhouse-fg-muted">
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-sm">Status</span>
+                    </div>
+                    <Badge className={statusColors[property.status]} variant="outline">
+                      {property.status}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -430,9 +488,13 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           onClose={() => setIsReservationModalOpen(false)}
           property={property}
           fundingProgress={fundingProgress}
+          existingReservation={existingReservation}
           onReservationSuccess={() => {
             setIsReservationModalOpen(false)
-            fetchPropertyDetails(propertyId) // Refresh data
+            fetchPropertyDetails(propertyId) // Refresh property data
+            if (address) {
+              fetchUserReservation(propertyId, address) // Refresh user reservation
+            }
           }}
         />
       )}

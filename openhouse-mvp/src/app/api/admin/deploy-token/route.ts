@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload || !payload.wallet_address) {
       return NextResponse.json(
         { error: 'Invalid authentication token' },

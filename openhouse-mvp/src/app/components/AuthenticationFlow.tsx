@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ConnectButton } from './ConnectButton'
 import { ProfileCompleteModal } from './ProfileCompleteModal'
@@ -22,6 +22,35 @@ interface UserProfile {
 export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // fix: check if user is already authenticated on component mount (Cursor Rule 5)
+  useEffect(() => {
+    checkInitialAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // checkInitialAuth is stable function defined in same component
+
+  const checkInitialAuth = async () => {
+    try {
+      const response = await fetch('/api/user-profile', {
+        method: 'GET',
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const userData = await response.json()
+        console.log('👤 Initial auth check - user found:', userData.user.wallet_address)
+        setCurrentUser(userData.user)
+        onAuthComplete?.(userData.user)
+      } else {
+        console.log('👤 Initial auth check - no authenticated user')
+      }
+    } catch (error) {
+      console.log('👤 Initial auth check failed:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // fix: check if user profile is complete after authentication (Cursor Rule 4)
   const checkUserProfile = async (walletAddress: string) => {
@@ -114,7 +143,7 @@ export function AuthenticationFlow({ onAuthComplete }: AuthenticationFlowProps) 
   return (
     <div className="flex items-center gap-4">
       {/* fix: show admin link if user is authenticated and is admin (Cursor Rule 5) */}
-      {currentUser?.is_admin && (
+      {!isLoading && currentUser?.is_admin && (
         <Link 
           href="/admin" 
           className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"

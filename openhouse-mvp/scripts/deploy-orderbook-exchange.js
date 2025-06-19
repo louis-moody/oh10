@@ -1,11 +1,26 @@
 const { createClient } = require('@supabase/supabase-js');
 const hre = require("hardhat");
 
-// fix: predefined wallet addresses from PRD requirements (Cursor Rule 4)
-const DEPLOYER_ADDRESS = "0x71c835E77B2Cc377fcfd9a37685Fea81a334cb81";
-const TREASURY_ADDRESS = "0xC69Fbb757554c92B3637C2eAf1CAA80aF1D25819";
-const OPERATOR_ADDRESS = "0x88c245fBdbD7e8f75AEE3CCC274d411Cb001d4C2";
-const FALLBACK_ADDRESS = "0x1F9D470a3B226D2d2263e6dE6fb3EeeC9dc39553";
+// fix: get wallet addresses from environment variables (Cursor Rule 4)
+const DEPLOYER_ADDRESS = process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS;
+const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
+const OPERATOR_ADDRESS = process.env.NEXT_PUBLIC_OPERATOR_ADDRESS;
+const FALLBACK_ADDRESS = process.env.NEXT_PUBLIC_FALLBACK_ADDRESS;
+
+// fix: validate required environment variables (Cursor Rule 6)
+const requiredAddresses = {
+  NEXT_PUBLIC_DEPLOYER_ADDRESS: DEPLOYER_ADDRESS,
+  NEXT_PUBLIC_TREASURY_ADDRESS: TREASURY_ADDRESS,
+  NEXT_PUBLIC_OPERATOR_ADDRESS: OPERATOR_ADDRESS,
+  NEXT_PUBLIC_FALLBACK_ADDRESS: FALLBACK_ADDRESS
+};
+
+for (const [envVar, value] of Object.entries(requiredAddresses)) {
+  if (!value) {
+    console.error(`❌ ${envVar} environment variable not set`);
+    process.exit(1);
+  }
+}
 
 // fix: USDC token addresses for Base network (Cursor Rule 4)
 const USDC_ADDRESSES = {

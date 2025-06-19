@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { DollarSign, Calculator, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { DollarSign, Calculator, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseUnits, formatUnits } from 'viem'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
@@ -10,7 +10,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Card, CardContent } from './ui/card'
 
-import { supabase, type Property } from '@/lib/supabase'
+import { type Property } from '@/lib/supabase'
 import { getUsdcAddress, USDC_ABI, getUserUsdcInfo } from '@/lib/contracts'
 import { useChainId } from 'wagmi'
 
@@ -23,26 +23,42 @@ interface ReservationModalProps {
     progress_percentage: number
   }
   onReservationSuccess: () => void
+  existingReservation?: {
+    id: string
+    usdc_amount: number
+    token_amount: number
+    payment_status: string
+  } | null
 }
 
-// fix: OpenHouse treasury address for USDC approvals (Cursor Rule 4)
-const TREASURY_ADDRESS = "0xC69Fbb757554c92B3637C2eAf1CAA80aF1D25819" as const
+// fix: get treasury address from environment variables (Cursor Rule 4)
+const getTreasuryAddress = (): `0x${string}` | null => {
+  const address = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
+  if (!address || !address.startsWith('0x')) {
+    return null
+  }
+  return address as `0x${string}`
+}
+
+// fix: Approval flow states for clear user feedback (Cursor Rule 6)
+type ApprovalFlowState = 'input' | 'approving' | 'approved' | 'storing' | 'success' | 'error'
 
 export function ReservationModal({ 
   isOpen, 
   onClose, 
   property, 
   fundingProgress,
-  onReservationSuccess 
+  onReservationSuccess,
+  existingReservation 
 }: ReservationModalProps) {
   const [inputType, setInputType] = useState<'usdc' | 'shares'>('usdc')
   const [usdcAmount, setUsdcAmount] = useState('')
   const [shareAmount, setShareAmount] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [flowState, setFlowState] = useState<ApprovalFlowState>('input')
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [userUsdcBalance, setUserUsdcBalance] = useState<bigint>(BigInt(0))
   const [userUsdcAllowance, setUserUsdcAllowance] = useState<bigint>(BigInt(0))
+  const [isCancelling, setIsCancelling] = useState(false)
   
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
@@ -56,45 +72,58 @@ export function ReservationModal({
     if (!address || !isConnected) return
 
     try {
-      const usdcInfo = await getUserUsdcInfo(chainId, address, TREASURY_ADDRESS)
+      const treasuryAddress = getTreasuryAddress()
+      if (!treasuryAddress) {
+        setError('Treasury address not configured')
+        return
+      }
+      
+      const usdcInfo = await getUserUsdcInfo(chainId, address, treasuryAddress)
       if (usdcInfo) {
         setUserUsdcBalance(usdcInfo.balance)
         setUserUsdcAllowance(usdcInfo.allowance)
       }
     } catch (error) {
-      console.error('Failed to fetch USDC info:', error)
+      // Silent error handling for USDC info fetch
     }
   }, [address, isConnected, chainId])
 
   // fix: reset modal state when opened (Cursor Rule 4)
   useEffect(() => {
     if (isOpen) {
-      setInputType('usdc')
-      setUsdcAmount('')
-      setShareAmount('')
+      if (existingReservation) {
+        // fix: populate existing reservation data (Cursor Rule 4)
+        setUsdcAmount(existingReservation.usdc_amount.toString())
+        setShareAmount(existingReservation.token_amount.toString())
+        setFlowState('success')
+      } else {
+        setInputType('usdc')
+        setUsdcAmount('')
+        setShareAmount('')
+        setFlowState('input')
+      }
       setError(null)
-      setSuccess(false)
-      setIsProcessing(false)
+      setIsCancelling(false)
       fetchUserUsdcInfo()
     }
-  }, [isOpen, fetchUserUsdcInfo])
-
-  // fix: handle successful reservation completion (Cursor Rule 4)
-  const handleReservationSuccess = useCallback(async () => {
-    if (hash) {
-      await storeReservation(hash)
-      setTimeout(() => {
-        onReservationSuccess()
-      }, 2000)
-    }
-  }, [hash, onReservationSuccess])
+  }, [isOpen, existingReservation, fetchUserUsdcInfo])
 
   // fix: handle successful approval transaction (Cursor Rule 4)
   useEffect(() => {
-    if (isConfirmed && hash && !success) {
-      handleReservationSuccess()
+    if (isConfirmed && hash && flowState === 'approving') {
+      setFlowState('storing')
+      storeReservation(hash)
     }
-  }, [isConfirmed, hash, success, handleReservationSuccess])
+  }, [isConfirmed, hash, flowState])
+
+  // fix: update flow state based on transaction status (Cursor Rule 4)
+  useEffect(() => {
+    if (isPending && flowState === 'input') {
+      setFlowState('approving')
+    } else if (isConfirming && flowState === 'approving') {
+      // Transaction is being confirmed
+    }
+  }, [isPending, isConfirming, flowState])
 
   // fix: calculate values based on input type (Cursor Rule 4)
   const calculateAmounts = () => {
@@ -144,7 +173,7 @@ export function ReservationModal({
     return property.total_shares - reservedShares
   }
 
-  // fix: handle reservation submission (Cursor Rule 4)
+  // fix: handle reservation submission with proper approval flow (Cursor Rule 4)
   const handleReservation = async () => {
     const validationError = validateReservation()
     if (validationError) {
@@ -153,12 +182,16 @@ export function ReservationModal({
     }
 
     try {
-      setIsProcessing(true)
       setError(null)
 
       const usdcAddress = getUsdcAddress(chainId)
       if (!usdcAddress) {
         throw new Error('USDC contract not available on this network')
+      }
+
+      const treasuryAddress = getTreasuryAddress()
+      if (!treasuryAddress) {
+        throw new Error('Treasury address not configured')
       }
 
       const requiredUsdc = parseUnits(calculatedUsdc.toString(), 6)
@@ -170,59 +203,104 @@ export function ReservationModal({
           address: usdcAddress,
           abi: USDC_ABI,
           functionName: 'approve',
-          args: [TREASURY_ADDRESS, requiredUsdc],
+          args: [treasuryAddress, requiredUsdc],
         })
       } else {
-        // fix: user already has sufficient allowance, proceed to store reservation (Cursor Rule 4)
-        await storeReservation(hash || '0x')
+        // fix: user already has sufficient allowance, create a new approval to get a valid hash (Cursor Rule 4)
+        await writeContract({
+          address: usdcAddress,
+          abi: USDC_ABI,
+          functionName: 'approve',
+          args: [treasuryAddress, requiredUsdc],
+        })
       }
 
     } catch (err) {
-      console.error('Reservation error:', err)
       setError(err instanceof Error ? err.message : 'Failed to process reservation')
-      setIsProcessing(false)
+      setFlowState('error')
     }
   }
 
-  // fix: store reservation in Supabase after successful approval (Cursor Rule 4)
+  // fix: store reservation via API route after approval (Cursor Rule 3)
   const storeReservation = async (approvalHash: string) => {
     try {
-      if (!address || !supabase) {
-        throw new Error('Missing required data for reservation')
+      if (!address) {
+        throw new Error('Wallet address required for reservation')
       }
 
-      // fix: insert reservation into payment_authorizations table (Cursor Rule 4)
-      const { error: insertError } = await supabase
-        .from('payment_authorizations')
-        .upsert({
+
+
+      // fix: use API route for server-side validation and authentication (Cursor Rule 3)
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: include cookies for JWT authentication
+        body: JSON.stringify({
           property_id: property.id,
-          wallet_address: address.toLowerCase(),
           usdc_amount: calculatedUsdc,
           token_amount: calculatedShares,
-          approval_hash: approvalHash,
-          approval_timestamp: new Date().toISOString(),
-          payment_status: 'approved',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'property_id,wallet_address'
+          approval_hash: approvalHash
         })
+      })
 
-      if (insertError) {
-        throw new Error(`Failed to store reservation: ${insertError.message}`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
       }
 
-      setSuccess(true)
-      setIsProcessing(false)
+      const result = await response.json()
+      setFlowState('success')
+      
+      // fix: notify parent component after successful reservation (Cursor Rule 4)
+      setTimeout(() => {
+        onReservationSuccess()
+      }, 2000)
 
     } catch (err) {
-      console.error('Store reservation error:', err)
       setError(err instanceof Error ? err.message : 'Failed to store reservation')
-      setIsProcessing(false)
+      setFlowState('error')
     }
   }
 
+  // fix: handle reservation cancellation (Cursor Rule 4)
+  const handleCancelReservation = async () => {
+    if (!existingReservation) return
 
+    try {
+      setIsCancelling(true)
+      setError(null)
+
+
+
+      const response = await fetch('/api/reservations', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          property_id: property.id
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+
+      // fix: notify parent component after successful cancellation (Cursor Rule 4)
+      onReservationSuccess()
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel reservation')
+    } finally {
+      setIsCancelling(false)
+    }
+  }
 
   // fix: handle input changes with validation (Cursor Rule 4)
   const handleInputChange = (value: string, type: 'usdc' | 'shares') => {
@@ -262,6 +340,43 @@ export function ReservationModal({
     return formatCurrency(parseFloat(formatUnits(balance, 6)))
   }
 
+  // fix: determine modal title based on state (Cursor Rule 4)
+  const getModalTitle = () => {
+    if (existingReservation) {
+      return 'Your Reservation'
+    }
+    return 'Reserve Property Shares'
+  }
+
+  // fix: determine button text based on flow state (Cursor Rule 4)
+  const getButtonText = () => {
+    switch (flowState) {
+      case 'input':
+        return 'Reserve Shares'
+      case 'approving':
+        return 'Confirming Approval...'
+      case 'approved':
+        return 'Approved'
+      case 'storing':
+        return 'Storing Reservation...'
+      case 'success':
+        return 'Reserved!'
+      case 'error':
+        return 'Try Again'
+      default:
+        return 'Reserve Shares'
+    }
+  }
+
+  // fix: determine if action button should be disabled (Cursor Rule 4)
+  const isActionDisabled = () => {
+    if (existingReservation) return false
+    if (flowState === 'approving' || flowState === 'storing') return true
+    if (flowState === 'success') return true
+    if (!calculatedUsdc || !calculatedShares) return true
+    return !!validateReservation()
+  }
+
   if (!isOpen) return null
 
   return (
@@ -270,7 +385,7 @@ export function ReservationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
-            Reserve Property Shares
+            {getModalTitle()}
           </DialogTitle>
         </DialogHeader>
 
@@ -295,63 +410,93 @@ export function ReservationModal({
             </CardContent>
           </Card>
 
-          {/* Input Section */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="usdc-amount">USDC Amount</Label>
-                <Input
-                  id="usdc-amount"
-                  type="number"
-                  placeholder="0.00"
-                  value={usdcAmount}
-                  onChange={(e) => handleInputChange(e.target.value, 'usdc')}
-                  className="mt-1"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <Label htmlFor="share-amount">Number of Shares</Label>
-                <Input
-                  id="share-amount"
-                  type="number"
-                  placeholder="0"
-                  value={shareAmount}
-                  onChange={(e) => handleInputChange(e.target.value, 'shares')}
-                  className="mt-1"
-                  min="0"
-                  step="1"
-                />
-              </div>
-            </div>
+          {/* Existing Reservation Display */}
+          {existingReservation && (
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-4 h-4 text-openhouse-success" />
+                  <span className="text-sm font-medium text-openhouse-fg">Current Reservation</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-openhouse-fg-muted">USDC Amount</span>
+                    <span className="font-medium text-openhouse-fg">{formatCurrency(existingReservation.usdc_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-openhouse-fg-muted">Shares</span>
+                    <span className="font-medium text-openhouse-fg">{existingReservation.token_amount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-openhouse-fg-muted">Status</span>
+                    <span className="font-medium text-openhouse-success capitalize">{existingReservation.payment_status}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-            {/* Calculation Display */}
-            {calculatedUsdc > 0 && calculatedShares > 0 && (
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Calculator className="w-4 h-4 text-openhouse-accent" />
-                    <span className="text-sm font-medium text-openhouse-fg">Reservation Summary</span>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-openhouse-fg-muted">USDC Amount</span>
-                      <span className="font-medium text-openhouse-fg">{formatCurrency(calculatedUsdc)}</span>
+          {/* Input Section - Only show if no existing reservation */}
+          {!existingReservation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="usdc-amount">USDC Amount</Label>
+                  <Input
+                    id="usdc-amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={usdcAmount}
+                    onChange={(e) => handleInputChange(e.target.value, 'usdc')}
+                    className="mt-1"
+                    min="0"
+                    step="0.01"
+                    disabled={flowState !== 'input' && flowState !== 'error'}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="share-amount">Number of Shares</Label>
+                  <Input
+                    id="share-amount"
+                    type="number"
+                    placeholder="0"
+                    value={shareAmount}
+                    onChange={(e) => handleInputChange(e.target.value, 'shares')}
+                    className="mt-1"
+                    min="0"
+                    step="1"
+                    disabled={flowState !== 'input' && flowState !== 'error'}
+                  />
+                </div>
+              </div>
+
+              {/* Calculation Display */}
+              {calculatedUsdc > 0 && calculatedShares > 0 && (
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calculator className="w-4 h-4 text-openhouse-accent" />
+                      <span className="text-sm font-medium text-openhouse-fg">Reservation Summary</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-openhouse-fg-muted">Shares</span>
-                      <span className="font-medium text-openhouse-fg">{calculatedShares.toLocaleString()}</span>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-openhouse-fg-muted">USDC Amount</span>
+                        <span className="font-medium text-openhouse-fg">{formatCurrency(calculatedUsdc)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-openhouse-fg-muted">Shares</span>
+                        <span className="font-medium text-openhouse-fg">{calculatedShares.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-openhouse-fg-muted">Price per Share</span>
+                        <span className="font-medium text-openhouse-fg">{formatCurrency(property.price_per_token)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-openhouse-fg-muted">Price per Share</span>
-                      <span className="font-medium text-openhouse-fg">{formatCurrency(property.price_per_token)}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
 
           {/* User Balance */}
           <div className="p-3 bg-openhouse-bg-muted rounded-lg">
@@ -361,6 +506,34 @@ export function ReservationModal({
             </div>
           </div>
 
+          {/* Flow State Indicators */}
+          {flowState === 'approving' && (
+            <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
+              <Loader2 className="w-4 h-4 text-openhouse-accent animate-spin flex-shrink-0" />
+              <span className="text-sm text-openhouse-accent">
+                Waiting for USDC approval confirmation...
+              </span>
+            </div>
+          )}
+
+          {flowState === 'storing' && (
+            <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
+              <Loader2 className="w-4 h-4 text-openhouse-accent animate-spin flex-shrink-0" />
+              <span className="text-sm text-openhouse-accent">
+                Storing your reservation...
+              </span>
+            </div>
+          )}
+
+          {flowState === 'success' && (
+            <div className="flex items-center gap-2 p-3 bg-openhouse-success/10 border border-openhouse-success/20 rounded-lg">
+              <CheckCircle className="w-4 h-4 text-openhouse-success flex-shrink-0" />
+              <span className="text-sm text-openhouse-success">
+                {existingReservation ? 'Your reservation is confirmed!' : 'Reservation successful! Your shares are reserved.'}
+              </span>
+            </div>
+          )}
+
           {/* Error Display */}
           {error && (
             <div className="flex items-center gap-2 p-3 bg-openhouse-danger/10 border border-openhouse-danger/20 rounded-lg">
@@ -369,56 +542,61 @@ export function ReservationModal({
             </div>
           )}
 
-          {/* Success Display */}
-          {success && (
-            <div className="flex items-center gap-2 p-3 bg-openhouse-success/10 border border-openhouse-success/20 rounded-lg">
-              <CheckCircle className="w-4 h-4 text-openhouse-success flex-shrink-0" />
-              <span className="text-sm text-openhouse-success">
-                Reservation successful! Your shares are reserved.
-              </span>
-            </div>
-          )}
-
           {/* Action Buttons */}
           <div className="flex gap-3">
+            {existingReservation && existingReservation.payment_status !== 'transferred' && (
+              <Button
+                variant="outline"
+                onClick={handleCancelReservation}
+                disabled={isCancelling}
+                className="flex-1 border-openhouse-danger text-openhouse-danger hover:bg-openhouse-danger/10"
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  <>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel Reservation
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={onClose}
-              disabled={isProcessing || isPending || isConfirming}
-              className="flex-1"
+              disabled={flowState === 'approving' || flowState === 'storing' || isCancelling}
+              className={existingReservation ? "flex-1" : "flex-1"}
             >
-              Cancel
+              {existingReservation ? 'Close' : 'Cancel'}
             </Button>
-            <Button
-              onClick={handleReservation}
-              disabled={
-                isProcessing || 
-                isPending || 
-                isConfirming || 
-                !calculatedUsdc || 
-                !calculatedShares || 
-                !!validateReservation() ||
-                success
-              }
-              className="flex-1 bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
-            >
-              {isPending || isConfirming ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {isPending ? 'Confirming...' : 'Processing...'}
-                </>
-              ) : success ? (
-                'Reserved!'
-              ) : (
-                'Reserve Shares'
-              )}
-            </Button>
+            {!existingReservation && (
+              <Button
+                onClick={handleReservation}
+                disabled={isActionDisabled()}
+                className="flex-1 bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
+              >
+                {(flowState === 'approving' || flowState === 'storing') ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {getButtonText()}
+                  </>
+                ) : (
+                  getButtonText()
+                )}
+              </Button>
+            )}
           </div>
 
           {/* Info Note */}
           <div className="text-xs text-openhouse-fg-muted text-center space-y-1">
             <p>By reserving, you approve OpenHouse to collect USDC when funding is complete.</p>
             <p>No payment is taken until the funding goal is reached.</p>
+            {existingReservation && existingReservation.payment_status !== 'transferred' && (
+              <p className="text-openhouse-accent font-medium">You can cancel your reservation at any time before funding closes.</p>
+            )}
           </div>
         </div>
       </DialogContent>

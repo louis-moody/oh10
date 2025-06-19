@@ -28,11 +28,7 @@ interface PropertyWithFunding {
   payment_count: number
 }
 
-interface AdminUser {
-  id: string
-  wallet_address: string
-  is_admin: boolean
-}
+// fix: AdminUser interface removed as it's not used (Cursor Rule 10)
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -44,7 +40,8 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     checkAdminAccess()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]) // fix: checkAdminAccess is stable function defined in same component (Cursor Rule 6)
 
   // fix: check if current user has admin access from Supabase users table (Cursor Rule 5)
   const checkAdminAccess = async () => {

@@ -15,9 +15,19 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// fix: predefined wallet addresses (Cursor Rule 4)
-const TREASURY_ADDRESS = "0xC69Fbb757554c92B3637C2eAf1CAA80aF1D25819";
-const OPERATOR_ADDRESS = "0x88c245fBdbD7e8f75AEE3CCC274d411Cb001d4C2";
+// fix: get wallet addresses from environment variables (Cursor Rule 4)
+const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
+const OPERATOR_ADDRESS = process.env.NEXT_PUBLIC_OPERATOR_ADDRESS;
+
+if (!TREASURY_ADDRESS) {
+  console.error("❌ NEXT_PUBLIC_TREASURY_ADDRESS environment variable not set");
+  process.exit(1);
+}
+
+if (!OPERATOR_ADDRESS) {
+  console.error("❌ NEXT_PUBLIC_OPERATOR_ADDRESS environment variable not set");
+  process.exit(1);
+}
 
 // fix: USDC addresses for Base networks (Cursor Rule 4)
 const USDC_ADDRESSES = {

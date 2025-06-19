@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const token = request.cookies.get('app-session-token')?.value
 
     if (token) {
-      const payload = verifyJWT(token)
+      const payload = await verifyJWT(token)
       
       if (payload && supabaseAdmin) {
         // fix: remove session from database using wallet address (Cursor Rule 4)
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     return response
 
   } catch (error) {
-    console.error('Logout error:', error)
+
     
     // fix: still clear cookie even if database operation fails (Cursor Rule 3)
     const response = NextResponse.json({ success: true })

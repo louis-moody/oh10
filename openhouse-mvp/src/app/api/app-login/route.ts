@@ -11,13 +11,9 @@ interface LoginRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔐 API Login Route Called')
-    
     const { message, signature }: LoginRequest = await request.json()
-    console.log('📝 Request payload:', { messageLength: message?.length, signatureLength: signature?.length })
 
     if (!message || !signature) {
-      console.log('❌ Missing message or signature')
       return NextResponse.json(
         { error: 'Message and signature are required' },
         { status: 400 }
@@ -25,19 +21,10 @@ export async function POST(request: NextRequest) {
     }
 
     // fix: verify SIWE message signature (Cursor Rule 5)
-    console.log('🔍 Verifying SIWE message...')
     const siweMessage = new SiweMessage(message)
-    console.log('🔍 SIWE message parsed:', {
-      address: siweMessage.address,
-      domain: siweMessage.domain,
-      chainId: siweMessage.chainId
-    })
-    
     const fields = await siweMessage.verify({ signature })
-    console.log('🔍 SIWE verification result:', fields.success)
 
     if (!fields.success) {
-      console.log('❌ SIWE verification failed')
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 401 }
@@ -45,20 +32,16 @@ export async function POST(request: NextRequest) {
     }
 
     const walletAddress = siweMessage.address.toLowerCase()
-    console.log('🎯 Extracted wallet address:', walletAddress)
 
     // fix: use service role key for server-side operations (Cursor Rule 3)
     if (!supabaseAdmin) {
-      console.log('❌ Supabase admin client not initialized - missing SUPABASE_SERVICE_ROLE_KEY')
       return NextResponse.json(
         { error: 'Database configuration error' },
         { status: 500 }
       )
     }
-    console.log('✅ Supabase admin client available')
 
     // fix: create or update user record with updated_at support (Cursor Rule 4)
-    console.log('📊 Attempting to upsert user record...')
     const { error: userError, data: userData } = await supabaseAdmin
       .from('users')
       .upsert({
@@ -70,16 +53,13 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (userError) {
-      console.error('❌ User upsert error:', userError)
       return NextResponse.json(
         { error: 'Failed to create user record' },
         { status: 500 }
       )
     }
-    console.log('✅ User record upserted:', userData)
 
     if (!userData || userData.length === 0) {
-      console.error('❌ No user data returned from upsert')
       return NextResponse.json(
         { error: 'Failed to retrieve user record' },
         { status: 500 }
@@ -87,12 +67,10 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = userData[0].id
-    console.log('🎯 User ID for session:', userId)
 
     // fix: create session record with enhanced schema (Cursor Rule 4)
     const sessionId = randomUUID()
     const jwtId = randomUUID() // JWT identifier for session tracking
-    console.log('🎫 Creating session with ID:', sessionId)
     
     const { error: sessionError, data: sessionData } = await supabaseAdmin
       .from('active_sessions')
@@ -108,21 +86,17 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (sessionError) {
-      console.error('❌ Session creation error:', sessionError)
       return NextResponse.json(
         { error: 'Failed to create session' },
         { status: 500 }
       )
     }
-    console.log('✅ Session created:', sessionData)
 
     // fix: sign JWT with session data (Cursor Rule 3)
-    console.log('🔐 Signing JWT...')
-    const token = signJWT({
+    const token = await signJWT({
       wallet_address: walletAddress,
       session_id: sessionId
     })
-    console.log('✅ JWT signed successfully')
 
     // fix: set secure HttpOnly cookie (Cursor Rule 3)
     const response = NextResponse.json({ 
@@ -137,14 +111,10 @@ export async function POST(request: NextRequest) {
       maxAge: 24 * 60 * 60, // 24 hours in seconds
       path: '/'
     })
-
-    console.log('🍪 Cookie set, authentication complete')
-    console.log('✅ Login successful for:', walletAddress)
     
     return response
 
   } catch (error) {
-    console.error('💥 Login error:', error)
     return NextResponse.json(
       { error: 'Authentication failed' },
       { status: 500 }

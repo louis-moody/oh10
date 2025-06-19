@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
-import { ethers } from 'ethers'
 
 interface CollectUsdcRequest {
   property_id: string
@@ -20,7 +19,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload || !payload.wallet_address) {
       return NextResponse.json(
         { error: 'Invalid authentication token' },
