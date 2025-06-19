@@ -18,6 +18,23 @@ function getUSDCContractAddress(): string {
   return address
 }
 
+// fix: get operator address for USDC approvals - derive from private key for consistency (Cursor Rule 4)
+function getOperatorAddress(): string {
+  const privateKey = process.env.OPERATOR_PRIVATE_KEY
+  if (!privateKey) {
+    throw new Error('OPERATOR_PRIVATE_KEY not configured')
+  }
+  
+  try {
+    // fix: derive address from private key to ensure frontend/backend consistency (Cursor Rule 4)
+    const { privateKeyToAccount } = require('viem/accounts')
+    const account = privateKeyToAccount(privateKey as `0x${string}`)
+    return account.address
+  } catch (error) {
+    throw new Error('Failed to derive operator address from private key')
+  }
+}
+
 function getTreasuryAddress(): string {
   const address = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
   if (!address || !isAddress(address)) {
@@ -39,7 +56,7 @@ async function verifyUSDCApproval(
     })
 
     const usdcAddress = getUSDCContractAddress()
-    const treasuryAddress = getTreasuryAddress()
+    const operatorAddress = getOperatorAddress()
 
     // fix: get transaction receipt to verify it exists and succeeded (Cursor Rule 4)
     const receipt = await publicClient.getTransactionReceipt({ 
@@ -75,9 +92,9 @@ async function verifyUSDCApproval(
             value: bigint
           }
 
-          // fix: verify approval parameters match reservation (Cursor Rule 4)
+          // fix: verify approval parameters match reservation - users must approve operator (Cursor Rule 4)
           const ownerMatches = owner.toLowerCase() === expectedOwner.toLowerCase()
-          const spenderMatches = spender.toLowerCase() === treasuryAddress.toLowerCase()
+          const spenderMatches = spender.toLowerCase() === operatorAddress.toLowerCase()
           const amountMatches = Number(value) >= (expectedAmount * 1_000_000) // USDC has 6 decimals
 
           if (ownerMatches && spenderMatches && amountMatches) {

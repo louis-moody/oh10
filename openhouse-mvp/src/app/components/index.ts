@@ -1,6 +1,7 @@
 export { ConnectButton } from './ConnectButton'
 export { ProfileCompleteModal } from './ProfileCompleteModal'
 export { AuthenticationFlow } from './AuthenticationFlow'
+export { DarkModeToggle } from './DarkModeToggle'
 export { EmptyState } from './EmptyState'
 export { LoadingState } from './LoadingState'
 export { PropertyCard } from './PropertyCard'

@@ -31,6 +31,24 @@ interface ReservationModalProps {
   } | null
 }
 
+// fix: get operator address for USDC approvals - derive from private key for consistency (Cursor Rule 4)
+const getOperatorAddress = (): `0x${string}` | null => {
+  const privateKey = process.env.NEXT_PUBLIC_OPERATOR_PRIVATE_KEY
+  if (!privateKey || !privateKey.startsWith('0x')) {
+    return null
+  }
+  
+  try {
+    // fix: derive address from private key to ensure frontend/backend consistency (Cursor Rule 4)
+    const { privateKeyToAccount } = require('viem/accounts')
+    const account = privateKeyToAccount(privateKey as `0x${string}`)
+    return account.address
+  } catch (error) {
+    console.error('Failed to derive operator address from private key:', error)
+    return null
+  }
+}
+
 // fix: get treasury address from environment variables (Cursor Rule 4)
 const getTreasuryAddress = (): `0x${string}` | null => {
   const address = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
@@ -72,13 +90,16 @@ export function ReservationModal({
     if (!address || !isConnected) return
 
     try {
-      const treasuryAddress = getTreasuryAddress()
-      if (!treasuryAddress) {
-        setError('Treasury address not configured')
+      const operatorAddress = getOperatorAddress()
+      if (!operatorAddress) {
+        console.error('❌ Operator address not configured in environment')
+        setError('Configuration error: Operator address not set')
         return
       }
       
-      const usdcInfo = await getUserUsdcInfo(chainId, address, treasuryAddress)
+      console.log(`✅ Using operator address for approval: ${operatorAddress}`)
+      
+      const usdcInfo = await getUserUsdcInfo(chainId, address, operatorAddress)
       if (usdcInfo) {
         setUserUsdcBalance(usdcInfo.balance)
         setUserUsdcAllowance(usdcInfo.allowance)
@@ -144,7 +165,12 @@ export function ReservationModal({
   // fix: validate reservation inputs (Cursor Rule 6)
   const validateReservation = () => {
     if (!isConnected || !address) {
-      return 'Please connect your wallet'
+      return 'Please connect your wallet first'
+    }
+
+    const operatorAddress = getOperatorAddress()
+    if (!operatorAddress) {
+      return 'Configuration error: Please refresh and try again'
     }
 
     if (calculatedUsdc <= 0 || calculatedShares <= 0) {
@@ -189,31 +215,25 @@ export function ReservationModal({
         throw new Error('USDC contract not available on this network')
       }
 
-      const treasuryAddress = getTreasuryAddress()
-      if (!treasuryAddress) {
-        throw new Error('Treasury address not configured')
+      const operatorAddress = getOperatorAddress()
+      if (!operatorAddress) {
+        throw new Error('Configuration error: Operator address not configured')
       }
+
+      console.log(`🎯 Approving USDC spend to operator: ${operatorAddress}`)
+      console.log(`💰 Required USDC amount: ${calculatedUsdc} USDC`)
+      console.log(`🔍 Current allowance: ${formatUnits(userUsdcAllowance, 6)} USDC`)
 
       const requiredUsdc = parseUnits(calculatedUsdc.toString(), 6)
 
-      // fix: check if user needs to approve more USDC (Cursor Rule 4)
-      if (userUsdcAllowance < requiredUsdc) {
-        // fix: request USDC approval for treasury address (Cursor Rule 4)
-        await writeContract({
-          address: usdcAddress,
-          abi: USDC_ABI,
-          functionName: 'approve',
-          args: [treasuryAddress, requiredUsdc],
-        })
-      } else {
-        // fix: user already has sufficient allowance, create a new approval to get a valid hash (Cursor Rule 4)
-        await writeContract({
-          address: usdcAddress,
-          abi: USDC_ABI,
-          functionName: 'approve',
-          args: [treasuryAddress, requiredUsdc],
-        })
-      }
+      // fix: always create a fresh approval for tracking (Cursor Rule 4)
+      console.log(`✍️ Creating USDC approval transaction...`)
+      await writeContract({
+        address: usdcAddress,
+        abi: USDC_ABI,
+        functionName: 'approve',
+        args: [operatorAddress, requiredUsdc],
+      })
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process reservation')
@@ -228,7 +248,13 @@ export function ReservationModal({
         throw new Error('Wallet address required for reservation')
       }
 
-
+      console.log(`📤 Storing reservation:`, {
+        property_id: property.id,
+        usdc_amount: calculatedUsdc,
+        token_amount: calculatedShares,
+        approval_hash: approvalHash,
+        wallet: address
+      })
 
       // fix: use API route for server-side validation and authentication (Cursor Rule 3)
       const response = await fetch('/api/reservations', {
@@ -247,16 +273,23 @@ export function ReservationModal({
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error(`❌ Reservation API error:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        })
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
       }
 
       const result = await response.json()
+      console.log(`✅ Reservation created successfully:`, result)
       setFlowState('success')
       
-      // fix: notify parent component after successful reservation (Cursor Rule 4)
+      // fix: notify parent component after successful reservation with smoother transition (Cursor Rule 4)
       setTimeout(() => {
         onReservationSuccess()
-      }, 2000)
+        onClose() // Close modal immediately after data refresh
+      }, 1500)
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to store reservation')

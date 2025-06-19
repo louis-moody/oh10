@@ -64,6 +64,7 @@ const config: Config = {
         'openhouse-fg-muted': 'var(--openhouse-fg-muted)',
         'openhouse-accent': 'var(--openhouse-accent)',
         'openhouse-accent-fg': 'var(--openhouse-accent-fg)',
+        'openhouse-border': 'var(--openhouse-border)',
         'openhouse-success': 'var(--openhouse-success)',
         'openhouse-warning': 'var(--openhouse-warning)',
         'openhouse-danger': 'var(--openhouse-danger)',

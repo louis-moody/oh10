@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     // fix: validate property exists and funding goal is met (Cursor Rule 6)
     const { data: property, error: propertyError } = await supabaseAdmin
       .from('properties')
-      .select('id, name, status, price_per_token, total_shares, funding_goal_usdc, funding_deadline, token_contract_address')
+      .select('id, name, status, price_per_token, total_shares, funding_goal_usdc, funding_deadline, token_contract_address, token_symbol')
       .eq('id', property_id)
       .single()
 
@@ -136,6 +136,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Property not found' },
         { status: 404 }
+      )
+    }
+
+    // fix: prevent deployment on flagged properties (Cursor Rule 4)
+    if (property.status.startsWith('flagged_')) {
+      return NextResponse.json(
+        { error: 'Cannot deploy token for flagged property. Property must be reviewed and cleared first.' },
+        { status: 400 }
       )
     }
 
@@ -179,8 +187,8 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 Deploying PropertyShareToken for: ${property.name}`)
     console.log(`💰 Funding goal met: $${totalFunding.toLocaleString()}`)
 
-    // fix: generate token details (Cursor Rule 4)
-    const tokenSymbol = `OH${property.name.replace(/\s+/g, '').toUpperCase().substring(0, 8)}`
+    // fix: use token symbol from Supabase database (Cursor Rule 4)
+    const tokenSymbol = property.token_symbol || `OH${property.name.replace(/\s+/g, '').toUpperCase().substring(0, 8)}`
     const tokenName = `${property.name} Shares`
 
     // fix: initialize blockchain client for deployment (Cursor Rule 4)

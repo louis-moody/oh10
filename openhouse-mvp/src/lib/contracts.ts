@@ -330,6 +330,35 @@ export function parseUsdcAmount(amount: string): bigint {
   return parseUnits(amount, 6); // USDC has 6 decimals
 }
 
+// fix: get operator address for USDC approvals - derive from private key for consistency (Cursor Rule 4)
+export function getOperatorAddress(): `0x${string}` | null {
+  const privateKey = process.env.NEXT_PUBLIC_OPERATOR_PRIVATE_KEY
+  if (!privateKey) {
+    console.warn('NEXT_PUBLIC_OPERATOR_PRIVATE_KEY not configured')
+    return null
+  }
+  
+  try {
+    // fix: derive address from private key to ensure frontend/backend consistency (Cursor Rule 4)
+    const { privateKeyToAccount } = require('viem/accounts')
+    const account = privateKeyToAccount(privateKey as `0x${string}`)
+    return account.address
+  } catch (error) {
+    console.error('Failed to derive operator address from private key:', error)
+    return null
+  }
+}
+
+// fix: get treasury address for fund destination (Cursor Rule 4)
+export function getTreasuryAddress(): `0x${string}` | null {
+  const treasuryAddress = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
+  if (!treasuryAddress) {
+    console.warn('NEXT_PUBLIC_TREASURY_ADDRESS not configured')
+    return null
+  }
+  return treasuryAddress as `0x${string}`
+}
+
 // fix: interface for property token information (Cursor Rule 4)
 export interface PropertyTokenInfo {
   propertyId: bigint;

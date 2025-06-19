@@ -4,11 +4,8 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ConnectButton } from './ConnectButton'
 import { ProfileCompleteModal } from './ProfileCompleteModal'
+import { DarkModeToggle } from './DarkModeToggle'
 import { Shield } from 'lucide-react'
-
-interface AuthenticationFlowProps {
-  children?: React.ReactNode
-}
 
 interface UserProfile {
   wallet_address: string
@@ -136,6 +133,7 @@ export function AuthenticationFlow() {
         </Link>
       )}
       
+      <DarkModeToggle />
       <ConnectButton onAuthSuccess={handleAuthSuccess} />
       
       {showProfileModal && currentUser && (
