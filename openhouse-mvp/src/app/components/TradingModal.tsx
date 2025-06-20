@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { TrendingUp, AlertCircle, CheckCircle, Loader2, DollarSign } from 'lucide-react'
+import { TrendingUp, AlertCircle, CheckCircle, Loader2, DollarSign, Clock } from 'lucide-react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
@@ -25,9 +25,9 @@ interface TradingModalProps {
 }
 
 type TradeTab = 'buy' | 'sell'
-type FlowState = 'input' | 'approving' | 'trading' | 'success' | 'error'
+type FlowState = 'input' | 'checking_orderbook' | 'using_fallback' | 'executing' | 'success' | 'error'
 
-// fix: simplified retail-friendly trading modal (Cursor Rule 4)
+// fix: simplified retail trading modal with fallback liquidity (Cursor Rule 4)
 export function TradingModal({ 
   isOpen, 
   onClose, 
@@ -35,21 +35,21 @@ export function TradingModal({
   onTradeSuccess
 }: TradingModalProps) {
   const [activeTab, setActiveTab] = useState<TradeTab>('buy')
-  const [usdcAmount, setUsdcAmount] = useState('')
-  const [tokenAmount, setTokenAmount] = useState('')
+  const [amount, setAmount] = useState('') // Unified amount input
   const [flowState, setFlowState] = useState<FlowState>('input')
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [timeoutCountdown, setTimeoutCountdown] = useState<number>(0)
   
-  // fix: user balances (Cursor Rule 4)
+  // fix: user balances and pricing (Cursor Rule 4)
   const [userUsdcBalance, setUserUsdcBalance] = useState<bigint>(BigInt(0))
   const [userTokenBalance, setUserTokenBalance] = useState<bigint>(BigInt(0))
-  const [tokenAllowance, setTokenAllowance] = useState<bigint>(BigInt(0))
-  
-  // fix: price discovery (Cursor Rule 4)
   const [currentPrice, setCurrentPrice] = useState<number>(property.price_per_token)
-  const [estimatedTokens, setEstimatedTokens] = useState<number>(0)
-  const [estimatedUsdc, setEstimatedUsdc] = useState<number>(0)
+  const [usingFallback, setUsingFallback] = useState<boolean>(false)
+  
+  // fix: trade calculations (Cursor Rule 4)
+  const [estimatedOutput, setEstimatedOutput] = useState<number>(0)
+  const [totalCost, setTotalCost] = useState<number>(0)
 
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
@@ -58,9 +58,8 @@ export function TradingModal({
     hash,
   })
 
-  // fix: get USDC contract address based on network (Cursor Rule 4)
+  // fix: get USDC contract address (Cursor Rule 4)
   const getUsdcAddress = () => {
-    // Base Sepolia for development, Base Mainnet for production
     return chainId === 8453 
       ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' // Base Mainnet USDC
       : '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // Base Sepolia USDC
@@ -77,97 +76,99 @@ export function TradingModal({
     }
   })
 
-  // fix: fetch token allowance for sell orders (Cursor Rule 4)
-  const { data: allowanceData } = useReadContract({
-    address: property.token_contract_address as `0x${string}`,
-    abi: PROPERTY_SHARE_TOKEN_ABI,
-    functionName: 'allowance',
-    args: [address as `0x${string}`, property.orderbook_contract_address as `0x${string}`],
-    query: {
-      enabled: !!address && !!property.token_contract_address && !!property.orderbook_contract_address
+  // fix: fetch current OpenHouse price from database (Cursor Rule 4)
+  const fetchCurrentPrice = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/fallback?property_id=${property.id}&action=get_price`)
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentPrice(data.current_price || property.price_per_token)
+      }
+    } catch (error) {
+      console.error('Failed to fetch current price:', error)
+      setCurrentPrice(property.price_per_token) // fallback to initial price
     }
-  })
+  }, [property.id, property.price_per_token])
 
-  // fix: fetch user USDC balance on modal open (Cursor Rule 4)
+  // fix: fetch user USDC balance (Cursor Rule 4)
   const fetchUserBalances = useCallback(async () => {
     if (!address || !isConnected) return
 
     try {
-      // fix: fetch USDC balance (Cursor Rule 4)
-      const usdcInfo = await getUserUsdcInfo(chainId, address, property.orderbook_contract_address as `0x${string}`)
+      const usdcInfo = await getUserUsdcInfo(chainId, address, getUsdcAddress() as `0x${string}`)
       if (usdcInfo) {
         setUserUsdcBalance(usdcInfo.balance)
       }
     } catch (error) {
       console.error('Failed to fetch user balances:', error)
     }
-  }, [address, isConnected, chainId, property.orderbook_contract_address])
+  }, [address, isConnected, chainId])
 
-  // fix: update balances when data changes (Cursor Rule 4)
+  // fix: update token balance when data changes (Cursor Rule 4)
   useEffect(() => {
     if (tokenBalance) {
       setUserTokenBalance(tokenBalance as bigint)
     }
   }, [tokenBalance])
 
-  useEffect(() => {
-    if (allowanceData) {
-      setTokenAllowance(allowanceData as bigint)
-    }
-  }, [allowanceData])
-
-  // fix: fetch balances when modal opens (Cursor Rule 4)
+  // fix: fetch data when modal opens (Cursor Rule 4)
   useEffect(() => {
     if (isOpen && isConnected && address) {
       fetchUserBalances()
-      setCurrentPrice(property.price_per_token) // Set default price
+      fetchCurrentPrice()
     }
-  }, [isOpen, isConnected, address, fetchUserBalances, property.price_per_token])
+  }, [isOpen, isConnected, address, fetchUserBalances, fetchCurrentPrice])
 
-  // fix: calculate estimated tokens when buying (Cursor Rule 4)
+  // fix: calculate trade amounts in real-time (Cursor Rule 4)
   useEffect(() => {
-    if (activeTab === 'buy' && usdcAmount && currentPrice > 0) {
-      const usdc = parseFloat(usdcAmount)
-      const protocolFee = usdc * 0.005 // 0.5% fee
-      const availableUsdc = usdc - protocolFee
-      const tokens = availableUsdc / currentPrice
-      setEstimatedTokens(Math.max(0, tokens))
-    } else {
-      setEstimatedTokens(0)
+    if (!amount || !currentPrice) {
+      setEstimatedOutput(0)
+      setTotalCost(0)
+      return
     }
-  }, [usdcAmount, currentPrice, activeTab])
 
-  // fix: calculate estimated USDC when selling (Cursor Rule 4)
-  useEffect(() => {
-    if (activeTab === 'sell' && tokenAmount && currentPrice > 0) {
-      const tokens = parseFloat(tokenAmount)
-      const grossUsdc = tokens * currentPrice
-      const protocolFee = grossUsdc * 0.005 // 0.5% fee
-      const netUsdc = grossUsdc - protocolFee
-      setEstimatedUsdc(Math.max(0, netUsdc))
-    } else {
-      setEstimatedUsdc(0)
+    const inputAmount = parseFloat(amount)
+    if (inputAmount <= 0) {
+      setEstimatedOutput(0)
+      setTotalCost(0)
+      return
     }
-  }, [tokenAmount, currentPrice, activeTab])
+
+    if (activeTab === 'buy') {
+      // User enters USDC amount, calculate tokens received
+      // No protocol fees for fallback trades (PRD requirement)
+      const tokensReceived = inputAmount / currentPrice
+      setEstimatedOutput(tokensReceived)
+      setTotalCost(inputAmount)
+    } else {
+      // User enters token amount, calculate USDC received
+      // No protocol fees for fallback trades (PRD requirement)
+      const usdcReceived = inputAmount * currentPrice
+      setEstimatedOutput(usdcReceived)
+      setTotalCost(inputAmount)
+    }
+  }, [amount, currentPrice, activeTab])
 
   // fix: reset form when switching tabs (Cursor Rule 4)
   useEffect(() => {
-    setUsdcAmount('')
-    setTokenAmount('')
+    setAmount('')
     setError(null)
     setSuccessMessage(null)
     setFlowState('input')
+    setUsingFallback(false)
+    setTimeoutCountdown(0)
   }, [activeTab])
 
   // fix: reset modal state when opened (Cursor Rule 4)
   useEffect(() => {
     if (isOpen) {
       setActiveTab('buy')
-      setUsdcAmount('')
-      setTokenAmount('')
+      setAmount('')
       setFlowState('input')
       setError(null)
       setSuccessMessage(null)
+      setUsingFallback(false)
+      setTimeoutCountdown(0)
     }
   }, [isOpen])
 
@@ -175,26 +176,129 @@ export function TradingModal({
   useEffect(() => {
     if (isConfirmed && hash) {
       setFlowState('success')
-      if (activeTab === 'buy') {
-        setSuccessMessage(`Successfully bought ${estimatedTokens.toFixed(2)} tokens!`)
-      } else {
-        setSuccessMessage(`Successfully sold ${tokenAmount} tokens for $${estimatedUsdc.toFixed(2)}!`)
-      }
+      const message = activeTab === 'buy' 
+        ? `Successfully bought ${estimatedOutput.toFixed(2)} tokens for ${formatCurrency(totalCost)}!`
+        : `Successfully sold ${totalCost} tokens for ${formatCurrency(estimatedOutput)}!`
+      setSuccessMessage(message)
       
-      // fix: record transaction in database (Cursor Rule 4)
+      // Record transaction and refresh
       recordTransaction()
-      
-      // Refresh balances and close modal after delay
       setTimeout(() => {
         onTradeSuccess()
         onClose()
       }, 3000)
     }
-  }, [isConfirmed, hash, activeTab, estimatedTokens, tokenAmount, estimatedUsdc, onTradeSuccess, onClose])
+  }, [isConfirmed, hash, activeTab, estimatedOutput, totalCost, onTradeSuccess, onClose])
 
-  // fix: record transaction in database via API (Cursor Rule 4)
+  // fix: record transaction with fallback source tracking (Cursor Rule 4)
   const recordTransaction = async () => {
     if (!address || !hash) return
+
+    try {
+      await fetch('/api/trading', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: property.id,
+          transaction_type: activeTab,
+          token_amount: activeTab === 'buy' ? estimatedOutput : totalCost,
+          usdc_amount: activeTab === 'buy' ? totalCost : estimatedOutput,
+          price_per_token: currentPrice,
+          transaction_hash: hash,
+          execution_source: usingFallback ? 'fallback' : 'orderbook',
+          fallback_reason: usingFallback ? 'insufficient_liquidity' : null
+        })
+      })
+    } catch (error) {
+      console.error('Failed to record transaction:', error)
+    }
+  }
+
+  // fix: validate trade inputs (Cursor Rule 4)
+  const validateTrade = (): string | null => {
+    if (!amount || parseFloat(amount) <= 0) {
+      return 'Please enter a valid amount'
+    }
+
+    const inputAmount = parseFloat(amount)
+
+    if (activeTab === 'buy') {
+      const requiredUsdc = parseUnits(inputAmount.toString(), 6)
+      if (requiredUsdc > userUsdcBalance) {
+        return 'Insufficient USDC balance'
+      }
+    } else {
+      const requiredTokens = parseUnits(inputAmount.toString(), 18)
+      if (requiredTokens > userTokenBalance) {
+        return 'Insufficient token balance'
+      }
+    }
+
+    return null
+  }
+
+  // fix: 5-second timeout mechanism for order book → fallback (PRD requirement)
+  const checkOrderBookAndFallback = async () => {
+    setFlowState('checking_orderbook')
+    setTimeoutCountdown(5)
+    
+    // Start 5-second countdown
+    const countdownInterval = setInterval(() => {
+      setTimeoutCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    try {
+      // Check if fallback should be used (PRD: 5-second timeout)
+      const fallbackResponse = await fetch('/api/fallback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: property.id,
+          trade_type: activeTab,
+          amount_usdc: activeTab === 'buy' ? parseFloat(amount) : estimatedOutput
+        })
+      })
+
+      const fallbackData = await fallbackResponse.json()
+      
+      // Wait for full 5-second timeout (PRD requirement)
+      setTimeout(() => {
+        clearInterval(countdownInterval)
+        setTimeoutCountdown(0)
+        
+        if (fallbackData.should_use_fallback || !property.orderbook_contract_address) {
+          // Use fallback liquidity
+          setUsingFallback(true)
+          setFlowState('using_fallback')
+          executeFallbackTrade()
+        } else {
+          // Use order book (not implemented in this scope)
+          setError('Order book trading not yet available. Using fallback liquidity.')
+          setUsingFallback(true)
+          setFlowState('using_fallback')
+          executeFallbackTrade()
+        }
+      }, 5000) // Exact 5-second timeout per PRD
+
+    } catch (error) {
+      clearInterval(countdownInterval)
+      setError('Failed to check trading options. Please try again.')
+      setFlowState('error')
+    }
+  }
+
+  // fix: safe trading execution via API (Cursor Rule 4)
+  const executeFallbackTrade = async () => {
+    if (!amount || !currentPrice || !address) return
+
+    setFlowState('executing')
+    setError('')
 
     try {
       const response = await fetch('/api/trading', {
@@ -202,201 +306,90 @@ export function TradingModal({
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
-          property_id: property.id,
-          order_type: activeTab,
-          token_amount: activeTab === 'buy' ? estimatedTokens.toString() : tokenAmount,
-          usdc_amount: activeTab === 'buy' ? usdcAmount : estimatedUsdc.toString(),
-          price_per_token: currentPrice.toString(),
-          transaction_hash: hash,
+          property_id: property.id.toString(),
+          trade_type: activeTab,
+          amount: parseFloat(amount),
+          execution_method: 'fallback',
+          price_per_token: currentPrice
         }),
       })
 
+      const result = await response.json()
+
       if (!response.ok) {
-        console.warn('Failed to record transaction in database')
+        throw new Error(result.error || 'Trade execution failed')
       }
+
+      setFlowState('success')
+      setSuccessMessage(
+        activeTab === 'buy' 
+          ? `Successfully bought ${estimatedOutput.toFixed(2)} tokens for ${formatCurrency(totalCost)}!`
+          : `Successfully sold ${totalCost} tokens for ${formatCurrency(estimatedOutput)}!`
+      )
+      
+      // Refresh balances and close modal after delay
+      setTimeout(() => {
+        onTradeSuccess()
+        onClose()
+      }, 3000)
+      
     } catch (error) {
-      console.error('Error recording transaction:', error)
-    }
-  }
-
-  // fix: validate buy order (Cursor Rule 6)
-  const validateBuyOrder = (): string | null => {
-    if (!isConnected || !address) return 'Please connect your wallet'
-    if (!usdcAmount || parseFloat(usdcAmount) <= 0) return 'Enter amount to spend'
-    
-    const requiredUsdc = parseUnits(usdcAmount, 6)
-    if (userUsdcBalance < requiredUsdc) return 'Insufficient USDC balance'
-    
-    if (estimatedTokens <= 0) return 'Invalid token amount'
-    
-    return null
-  }
-
-  // fix: validate sell order (Cursor Rule 6)
-  const validateSellOrder = (): string | null => {
-    if (!isConnected || !address) return 'Please connect your wallet'
-    if (!tokenAmount || parseFloat(tokenAmount) <= 0) return 'Enter tokens to sell'
-    
-    const requiredTokens = parseUnits(tokenAmount, 18)
-    if (userTokenBalance < requiredTokens) return 'Insufficient token balance'
-    
-    return null
-  }
-
-  // fix: check if approval is needed for sell (Cursor Rule 4)
-  const needsApproval = (): boolean => {
-    if (activeTab !== 'sell' || !tokenAmount) return false
-    const requiredTokens = parseUnits(tokenAmount, 18)
-    return tokenAllowance < requiredTokens
-  }
-
-  // fix: handle token approval for selling (Cursor Rule 4)
-  const handleApproval = async () => {
-    if (!property.token_contract_address || !property.orderbook_contract_address) {
-      setError('Trading contracts not available')
-      return
-    }
-
-    try {
-      setFlowState('approving')
-      setError(null)
-
-      writeContract({
-        address: property.token_contract_address as `0x${string}`,
-        abi: PROPERTY_SHARE_TOKEN_ABI,
-        functionName: 'approve',
-        args: [property.orderbook_contract_address as `0x${string}`, maxUint256]
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to approve tokens')
-      setFlowState('error')
-    }
-  }
-
-  // fix: handle buy order (Cursor Rule 4)
-  const handleBuyOrder = async () => {
-    const validation = validateBuyOrder()
-    if (validation) {
-      setError(validation)
-      return
-    }
-
-    if (!property.orderbook_contract_address) {
-      setError('Trading not available')
-      return
-    }
-
-    try {
-      setFlowState('trading')
-      setError(null)
-
-      const tokenAmountWei = parseUnits(estimatedTokens.toString(), 18)
-      const priceWei = parseUnits(currentPrice.toString(), 6)
-
-      writeContract({
-        address: property.orderbook_contract_address as `0x${string}`,
-        abi: OrderBookExchangeABI,
-        functionName: 'createBuyOrder',
-        args: [tokenAmountWei, priceWei]
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to place buy order')
-      setFlowState('error')
-    }
-  }
-
-  // fix: handle sell order (Cursor Rule 4)
-  const handleSellOrder = async () => {
-    const validation = validateSellOrder()
-    if (validation) {
-      setError(validation)
-      return
-    }
-
-    if (!property.orderbook_contract_address) {
-      setError('Trading not available')
-      return
-    }
-
-    try {
-      setFlowState('trading')
-      setError(null)
-
-      const tokenAmountWei = parseUnits(tokenAmount, 18)
-      const priceWei = parseUnits(currentPrice.toString(), 6)
-
-      writeContract({
-        address: property.orderbook_contract_address as `0x${string}`,
-        abi: OrderBookExchangeABI,
-        functionName: 'createSellOrder',
-        args: [tokenAmountWei, priceWei]
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to place sell order')
+      console.error('Fallback trade error:', error)
+      setError(error instanceof Error ? error.message : 'Trade execution failed')
       setFlowState('error')
     }
   }
 
   // fix: main action handler (Cursor Rule 4)
   const handleMainAction = () => {
-    if (activeTab === 'sell' && needsApproval()) {
-      handleApproval()
-    } else if (activeTab === 'buy') {
-      handleBuyOrder()
-    } else {
-      handleSellOrder()
+    const validationError = validateTrade()
+    if (validationError) {
+      setError(validationError)
+      return
     }
+
+    setError(null)
+    checkOrderBookAndFallback()
   }
 
-  // fix: format currency display (Cursor Rule 4)
+  // fix: utility functions (Cursor Rule 4)
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: 6,
     }).format(amount)
   }
 
-  // fix: format balance display (Cursor Rule 4)
   const formatBalance = (balance: bigint, decimals: number) => {
-    const formatted = parseFloat(formatUnits(balance, decimals))
-    return decimals === 6 ? formatted.toFixed(2) : formatted.toFixed(6)
+    return parseFloat(formatUnits(balance, decimals)).toFixed(decimals === 6 ? 2 : 0)
   }
 
-  // fix: get max amounts for quick buttons (Cursor Rule 4)
-  const getMaxUsdcAmount = () => {
-    return formatBalance(userUsdcBalance, 6)
-  }
-
-  const getMaxTokenAmount = () => {
-    return formatBalance(userTokenBalance, 18)
-  }
-
-  // fix: get main button text (Cursor Rule 4)
-  const getMainButtonText = () => {
-    if (flowState === 'approving') return 'Approving Tokens...'
-    if (flowState === 'trading') return activeTab === 'buy' ? 'Buying Tokens...' : 'Selling Tokens...'
-    if (flowState === 'success') return 'Success!'
-    
-    if (activeTab === 'sell' && needsApproval()) {
-      return 'Approve Tokens to Trade'
-    }
-    
-    return activeTab === 'buy' ? 'Buy Tokens' : 'Sell Tokens'
-  }
-
-  // fix: check if main button should be disabled (Cursor Rule 4)
-  const isMainButtonDisabled = () => {
-    if (flowState === 'approving' || flowState === 'trading' || flowState === 'success') return true
-    
+  const getMaxAmount = () => {
     if (activeTab === 'buy') {
-      return !!validateBuyOrder() || !usdcAmount
+      return formatBalance(userUsdcBalance, 6)
     } else {
-      return !!validateSellOrder() || !tokenAmount
+      return formatBalance(userTokenBalance, 18)
     }
+  }
+
+  const getMainButtonText = () => {
+    if (flowState === 'checking_orderbook') return `Checking liquidity... (${timeoutCountdown}s)`
+    if (flowState === 'using_fallback') return 'Using OpenHouse liquidity...'
+    if (flowState === 'executing') return `${activeTab === 'buy' ? 'Buying' : 'Selling'}...`
+    
+    return activeTab === 'buy' ? `Buy ${estimatedOutput.toFixed(2)} tokens` : `Sell for ${formatCurrency(estimatedOutput)}`
+  }
+
+  const isMainButtonDisabled = () => {
+    return !amount || 
+           parseFloat(amount) <= 0 || 
+           flowState === 'checking_orderbook' || 
+           flowState === 'using_fallback' ||
+           flowState === 'executing' ||
+           isPending
   }
 
   return (
@@ -405,7 +398,7 @@ export function TradingModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
-            Trade Shares - {property.name}
+            Trade {property.name}
           </DialogTitle>
         </DialogHeader>
 
@@ -420,7 +413,7 @@ export function TradingModal({
                   : 'text-openhouse-fg hover:text-openhouse-success'
               }`}
             >
-              Buy Shares
+              Buy
             </button>
             <button
               onClick={() => setActiveTab('sell')}
@@ -430,134 +423,94 @@ export function TradingModal({
                   : 'text-openhouse-fg hover:text-openhouse-danger'
               }`}
             >
-              Sell Shares
+              Sell
             </button>
           </div>
 
-          {/* Buy Tab Content */}
-          {activeTab === 'buy' && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="usdc-amount" className="text-sm font-medium">
-                  Amount to spend (USDC)
-                </Label>
-                <div className="relative mt-1">
+          {/* Single Amount Input (Retail Style) */}
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="amount" className="text-sm font-medium">
+                {activeTab === 'buy' ? 'Amount to spend (USDC)' : 'Tokens to sell'}
+              </Label>
+              <div className="relative mt-1">
+                {activeTab === 'buy' && (
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-openhouse-fg-muted" />
-                  <Input
-                    id="usdc-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={usdcAmount}
-                    onChange={(e) => setUsdcAmount(e.target.value)}
-                    className="pl-9 pr-16 py-3 text-lg"
-                    min="0"
-                    step="0.01"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  />
-                  <button
-                    onClick={() => setUsdcAmount(getMaxUsdcAmount())}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-openhouse-accent hover:text-openhouse-accent/80 font-medium"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  >
-                    MAX
-                  </button>
-                </div>
-                <p className="text-xs text-openhouse-fg-muted mt-1">
-                  Balance: {formatBalance(userUsdcBalance, 6)} USDC
+                )}
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={`${activeTab === 'buy' ? 'pl-9 pr-16' : 'pr-16'} py-3 text-lg`}
+                  min="0"
+                  step={activeTab === 'buy' ? "0.01" : "1"}
+                  disabled={flowState !== 'input' && flowState !== 'error'}
+                />
+                <button
+                  onClick={() => setAmount(getMaxAmount())}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-openhouse-accent hover:text-openhouse-accent/80 font-medium"
+                  disabled={flowState !== 'input' && flowState !== 'error'}
+                >
+                  MAX
+                </button>
+              </div>
+              <p className="text-xs text-openhouse-fg-muted mt-1">
+                Balance: {activeTab === 'buy' 
+                  ? `${formatBalance(userUsdcBalance, 6)} USDC`
+                  : `${formatBalance(userTokenBalance, 18)} tokens`
+                }
+              </p>
+            </div>
+
+            {/* Output Estimate */}
+            {estimatedOutput > 0 && (
+              <div className="p-4 bg-openhouse-bg-muted rounded-lg">
+                <p className="text-sm text-openhouse-fg-muted">You will receive:</p>
+                <p className="text-xl font-semibold text-openhouse-fg">
+                  {activeTab === 'buy' 
+                    ? `${estimatedOutput.toFixed(2)} tokens`
+                    : formatCurrency(estimatedOutput)
+                  }
                 </p>
-              </div>
-
-              {estimatedTokens > 0 && (
-                <div className="p-4 bg-openhouse-bg-muted rounded-lg">
-                  <p className="text-sm text-openhouse-fg-muted">You will receive:</p>
-                  <p className="text-xl font-semibold text-openhouse-fg">
-                    {estimatedTokens.toFixed(2)} tokens
-                  </p>
-                  <p className="text-xs text-openhouse-fg-muted mt-1">
-                    At {formatCurrency(currentPrice)} per token
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Sell Tab Content */}
-          {activeTab === 'sell' && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="token-amount" className="text-sm font-medium">
-                  Tokens to sell
-                </Label>
-                <div className="relative mt-1">
-                  <Input
-                    id="token-amount"
-                    type="number"
-                    placeholder="0"
-                    value={tokenAmount}
-                    onChange={(e) => setTokenAmount(e.target.value)}
-                    className="pr-16 py-3 text-lg"
-                    min="0"
-                    step="1"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  />
-                  <button
-                    onClick={() => setTokenAmount(getMaxTokenAmount())}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-openhouse-accent hover:text-openhouse-accent/80 font-medium"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  >
-                    MAX
-                  </button>
-                </div>
                 <p className="text-xs text-openhouse-fg-muted mt-1">
-                  Balance: {formatBalance(userTokenBalance, 18)} tokens
+                  At {formatCurrency(currentPrice)} per token • OpenHouse Price
                 </p>
-              </div>
-
-              {estimatedUsdc > 0 && (
-                <div className="p-4 bg-openhouse-bg-muted rounded-lg">
-                  <p className="text-sm text-openhouse-fg-muted">You will receive:</p>
-                  <p className="text-xl font-semibold text-openhouse-fg">
-                    {formatCurrency(estimatedUsdc)}
+                {usingFallback && (
+                  <p className="text-xs text-openhouse-accent mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Using OpenHouse liquidity • No fees
                   </p>
-                  <p className="text-xs text-openhouse-fg-muted mt-1">
-                    At {formatCurrency(currentPrice)} per token
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Current Balances */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-openhouse-bg-muted rounded-lg text-center">
-              <div className="text-xs text-openhouse-fg-muted">USDC</div>
-              <div className="font-medium text-openhouse-fg">
-                {formatBalance(userUsdcBalance, 6)}
+                )}
               </div>
-            </div>
-            <div className="p-3 bg-openhouse-bg-muted rounded-lg text-center">
-              <div className="text-xs text-openhouse-fg-muted">Tokens</div>
-              <div className="font-medium text-openhouse-fg">
-                {formatBalance(userTokenBalance, 18)}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Status Messages */}
-          {flowState === 'approving' && (
+          {/* Trading Status */}
+          {flowState === 'checking_orderbook' && (
             <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
               <Loader2 className="w-4 h-4 text-openhouse-accent animate-spin flex-shrink-0" />
               <span className="text-sm text-openhouse-accent">
-                Approving tokens for trading...
+                Checking order book liquidity... ({timeoutCountdown}s)
               </span>
             </div>
           )}
 
-          {flowState === 'trading' && (
+          {flowState === 'using_fallback' && (
+            <div className="flex items-center gap-2 p-3 bg-openhouse-success/10 border border-openhouse-success/20 rounded-lg">
+              <Clock className="w-4 h-4 text-openhouse-success flex-shrink-0" />
+              <span className="text-sm text-openhouse-success">
+                Using OpenHouse liquidity • Guaranteed execution • No fees
+              </span>
+            </div>
+          )}
+
+          {flowState === 'executing' && (
             <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
               <Loader2 className="w-4 h-4 text-openhouse-accent animate-spin flex-shrink-0" />
               <span className="text-sm text-openhouse-accent">
-                {activeTab === 'buy' ? 'Placing buy order...' : 'Placing sell order...'}
+                Executing trade...
               </span>
             </div>
           )}
@@ -581,7 +534,7 @@ export function TradingModal({
             <Button
               variant="outline"
               onClick={onClose}
-              disabled={flowState === 'approving' || flowState === 'trading'}
+              disabled={flowState === 'checking_orderbook' || flowState === 'using_fallback' || flowState === 'executing'}
               className="flex-1"
             >
               Cancel
@@ -595,7 +548,7 @@ export function TradingModal({
                   : 'bg-openhouse-danger hover:bg-openhouse-danger/90 text-white'
               }`}
             >
-              {(flowState === 'approving' || flowState === 'trading') ? (
+              {(flowState === 'checking_orderbook' || flowState === 'using_fallback' || flowState === 'executing') ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   {getMainButtonText()}
@@ -606,9 +559,9 @@ export function TradingModal({
             </Button>
           </div>
 
-          {/* Trading Fee Info */}
+          {/* Fee Info */}
           <div className="text-xs text-openhouse-fg-muted text-center">
-            <p>A 0.5% protocol fee is charged to both buyers and sellers.</p>
+            <p>OpenHouse liquidity trades have no fees • Order book trades may have protocol fees</p>
           </div>
         </div>
       </DialogContent>
