@@ -276,6 +276,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // fix: populate property_token_details table for trading interface (Cursor Rule 4)
+    const { error: tokenDetailsError } = await supabaseAdmin
+      .from('property_token_details')
+      .insert({
+        property_id: property_id,
+        contract_address: contractAddress,
+        token_name: tokenName,
+        token_symbol: tokenSymbol,
+        total_shares: property.total_shares,
+        deployment_hash: deploymentHash,
+        treasury_address: treasuryAddress,
+        operator_address: account.address,
+        funding_goal_usdc: property.funding_goal_usdc,
+        funding_deadline: property.funding_deadline,
+        price_per_token: property.price_per_token,
+        deployment_timestamp: new Date().toISOString()
+      })
+
+    if (tokenDetailsError) {
+      console.warn('⚠️ Failed to insert token details:', tokenDetailsError.message)
+      // Don't fail the deployment if this insert fails - property is still updated
+    } else {
+      console.log('✅ Token details saved to property_token_details table')
+    }
+
     return NextResponse.json({
       success: true,
       message: 'PropertyShareToken contract deployed successfully',

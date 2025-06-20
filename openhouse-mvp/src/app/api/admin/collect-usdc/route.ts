@@ -346,14 +346,15 @@ export async function POST(request: NextRequest) {
         console.log(`✅ USDC transfer successful: ${transferHash}`)
 
         // fix: mint property tokens to investor using deployer wallet (contract owner) (Cursor Rule 4)
-        const tokenAmount = BigInt(reservation.token_amount)
+        // fix: convert token amount to proper decimals (18 decimals for ERC20 tokens) (Cursor Rule 4)
+        const tokenAmountWei = parseUnits(reservation.token_amount.toString(), 18)
         const mintHash = await deployerWalletClient.writeContract({
           address: property.token_contract_address as `0x${string}`,
           abi: PROPERTY_SHARE_TOKEN_ABI,
           functionName: 'mintTo',
           args: [
             reservation.wallet_address as `0x${string}`,
-            tokenAmount
+            tokenAmountWei
           ]
         })
 

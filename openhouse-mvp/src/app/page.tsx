@@ -31,7 +31,7 @@ export default function HomePage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from('properties')
         .select('*')
-        .in('status', ['active', 'funded'])
+        .in('status', ['active', 'funded', 'completed'])
         .order('created_at', { ascending: false })
 
       if (propertiesError) {
