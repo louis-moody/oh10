@@ -379,19 +379,29 @@ export async function POST(request: NextRequest) {
         }
 
         // fix: create user holding record with correct column names (Cursor Rule 4)
-        const { error: holdingError } = await supabaseAdmin
-          .from('user_holdings')
-          .upsert({
-            user_address: reservation.wallet_address,
-            property_id: parseInt(property_id),
-            token_contract: property.token_contract_address,
-            shares: reservation.token_amount
-          }, {
-            onConflict: 'user_address,property_id'
-          })
+        const { data: user } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('wallet_address', reservation.wallet_address)
+          .single()
 
-        if (holdingError) {
-          console.warn(`⚠️ User holding creation failed: ${holdingError.message}`)
+        if (user) {
+          const { error: holdingError } = await supabaseAdmin
+            .from('user_holdings')
+            .upsert({
+              user_id: user.id,
+              property_id: property_id,
+              token_contract: property.token_contract_address,
+              shares: reservation.token_amount
+            }, {
+              onConflict: 'user_id,property_id'
+            })
+
+          if (holdingError) {
+            console.warn(`⚠️ User holding creation failed: ${holdingError.message}`)
+          }
+        } else {
+          console.warn(`⚠️ User not found for wallet: ${reservation.wallet_address}`)
         }
 
         // fix: create transaction records (Cursor Rule 4)

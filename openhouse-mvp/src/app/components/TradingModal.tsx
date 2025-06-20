@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { TrendingUp, AlertCircle, CheckCircle, Loader2, DollarSign, Clock } from 'lucide-react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
-import { parseUnits, formatUnits, maxUint256 } from 'viem'
+import { useAccount, useReadContract } from 'wagmi'
+import { parseUnits, formatUnits } from 'viem'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -11,7 +11,7 @@ import { Label } from './ui/label'
 import { Card, CardContent } from './ui/card'
 
 import { type Property } from '@/lib/supabase'
-import { OrderBookExchangeABI, PROPERTY_SHARE_TOKEN_ABI, USDC_ABI, getUserUsdcInfo } from '@/lib/contracts'
+import { PROPERTY_SHARE_TOKEN_ABI, getUserUsdcInfo } from '@/lib/contracts'
 import { useChainId } from 'wagmi'
 
 interface TradingModalProps {
@@ -43,7 +43,7 @@ export function TradingModal({
   
   // fix: user balances and pricing (Cursor Rule 4)
   const [userUsdcBalance, setUserUsdcBalance] = useState<bigint>(BigInt(0))
-  const [userTokenBalance, setUserTokenBalance] = useState<bigint>(BigInt(0))
+  const [userTokenBalance, setUserTokenBalance] = useState<number>(0)
   const [currentPrice, setCurrentPrice] = useState<number>(property.price_per_token)
   const [usingFallback, setUsingFallback] = useState<boolean>(false)
   
@@ -51,12 +51,18 @@ export function TradingModal({
   const [estimatedOutput, setEstimatedOutput] = useState<number>(0)
   const [totalCost, setTotalCost] = useState<number>(0)
 
+  // fix: fallback availability tracking (Cursor Rule 4)
+  const [fallbackAvailability, setFallbackAvailability] = useState<{
+    available_to_buy: number
+    available_to_sell: number
+    user_token_balance: number
+    fallback_enabled: boolean
+    buy_price: number
+    sell_price: number
+  } | null>(null)
+
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
-  const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
-  })
 
   // fix: get USDC contract address (Cursor Rule 4)
   const getUsdcAddress = () => {
@@ -76,10 +82,37 @@ export function TradingModal({
     }
   })
 
+  // fix: fetch fallback availability and pricing (Cursor Rule 4)
+  const fetchFallbackAvailability = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/fallback?property_id=${property.id}`, {
+        credentials: 'include'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFallbackAvailability({
+          available_to_buy: data.availability.available_to_buy,
+          available_to_sell: data.availability.available_to_sell,
+          user_token_balance: data.availability.user_token_balance,
+          fallback_enabled: data.fallback_enabled,
+          buy_price: data.pricing.buy_price,
+          sell_price: data.pricing.sell_price
+        })
+        setCurrentPrice(data.current_price)
+      } else {
+        console.error('Failed to fetch fallback availability:', response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error('Failed to fetch fallback availability:', error)
+    }
+  }, [property.id])
+
   // fix: fetch current OpenHouse price from database (Cursor Rule 4)
   const fetchCurrentPrice = useCallback(async () => {
     try {
-      const response = await fetch(`/api/fallback?property_id=${property.id}&action=get_price`)
+      const response = await fetch(`/api/fallback?property_id=${property.id}&action=get_price`, {
+        credentials: 'include'
+      })
       if (response.ok) {
         const data = await response.json()
         setCurrentPrice(data.current_price || property.price_per_token)
@@ -106,22 +139,28 @@ export function TradingModal({
 
   // fix: update token balance when data changes (Cursor Rule 4)
   useEffect(() => {
-    if (tokenBalance) {
-      setUserTokenBalance(tokenBalance as bigint)
-    }
+    // Removed smart contract balance - using database balance from fallbackAvailability instead
   }, [tokenBalance])
+
+  // fix: update token balance when fallback data changes (Cursor Rule 4)
+  useEffect(() => {
+    if (fallbackAvailability) {
+      setUserTokenBalance(fallbackAvailability.user_token_balance)
+    }
+  }, [fallbackAvailability])
 
   // fix: fetch data when modal opens (Cursor Rule 4)
   useEffect(() => {
     if (isOpen && isConnected && address) {
       fetchUserBalances()
       fetchCurrentPrice()
+      fetchFallbackAvailability()
     }
-  }, [isOpen, isConnected, address, fetchUserBalances, fetchCurrentPrice])
+  }, [isOpen, isConnected, address, fetchUserBalances, fetchCurrentPrice, fetchFallbackAvailability])
 
-  // fix: calculate trade amounts in real-time (Cursor Rule 4)
+  // fix: calculate trade amounts in real-time with fallback pricing (Cursor Rule 4)
   useEffect(() => {
-    if (!amount || !currentPrice) {
+    if (!amount || !fallbackAvailability) {
       setEstimatedOutput(0)
       setTotalCost(0)
       return
@@ -135,19 +174,17 @@ export function TradingModal({
     }
 
     if (activeTab === 'buy') {
-      // User enters USDC amount, calculate tokens received
-      // No protocol fees for fallback trades (PRD requirement)
-      const tokensReceived = inputAmount / currentPrice
+      // User enters USDC amount, calculate tokens received at fallback price
+      const tokensReceived = inputAmount / fallbackAvailability.buy_price
       setEstimatedOutput(tokensReceived)
       setTotalCost(inputAmount)
     } else {
-      // User enters token amount, calculate USDC received
-      // No protocol fees for fallback trades (PRD requirement)
-      const usdcReceived = inputAmount * currentPrice
+      // User enters token amount, calculate USDC received at fallback price
+      const usdcReceived = inputAmount * fallbackAvailability.sell_price
       setEstimatedOutput(usdcReceived)
       setTotalCost(inputAmount)
     }
-  }, [amount, currentPrice, activeTab])
+  }, [amount, fallbackAvailability, activeTab])
 
   // fix: reset form when switching tabs (Cursor Rule 4)
   useEffect(() => {
@@ -172,65 +209,104 @@ export function TradingModal({
     }
   }, [isOpen])
 
-  // fix: handle successful transaction (Cursor Rule 4)
-  useEffect(() => {
-    if (isConfirmed && hash) {
+  // fix: REAL TRADING EXECUTION via API - NO SIMULATION (Cursor Rule 4)
+  const executeFallbackTrade = async () => {
+    if (!amount || !currentPrice || !address) return
+
+    setFlowState('executing')
+    setError('')
+
+    try {
+      const response = await fetch('/api/trading', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          property_id: property.id.toString(),
+          trade_type: activeTab,
+          amount: parseFloat(amount),
+          execution_method: 'fallback'
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        // Handle specific error types for better UX
+        if (result.error?.includes('allowance')) {
+          setError(`${result.error}. Please approve the required amount in your wallet first.`)
+        } else if (result.error?.includes('Insufficient')) {
+          setError(result.error)
+        } else {
+          setError(result.error || 'Trade execution failed')
+        }
+        setFlowState('error')
+        return
+      }
+
+      // Success - show transaction details
       setFlowState('success')
-      const message = activeTab === 'buy' 
-        ? `Successfully bought ${estimatedOutput.toFixed(2)} tokens for ${formatCurrency(totalCost)}!`
-        : `Successfully sold ${totalCost} tokens for ${formatCurrency(estimatedOutput)}!`
-      setSuccessMessage(message)
+      setSuccessMessage(
+        `✅ ${activeTab === 'buy' ? 'Purchase' : 'Sale'} completed! ` +
+        `${activeTab === 'buy' 
+          ? `Received ${result.token_amount?.toFixed(2)} tokens for ${formatCurrency(result.usdc_amount)}`
+          : `Sold ${result.token_amount?.toFixed(2)} tokens for ${formatCurrency(result.usdc_amount)}`
+        }. ` +
+        `Transaction: ${result.tx_hash?.substring(0, 10)}...`
+      )
       
-      // Record transaction and refresh
-      recordTransaction()
+      // Refresh balances and close modal after delay
       setTimeout(() => {
         onTradeSuccess()
         onClose()
-      }, 3000)
-    }
-  }, [isConfirmed, hash, activeTab, estimatedOutput, totalCost, onTradeSuccess, onClose])
-
-  // fix: record transaction with fallback source tracking (Cursor Rule 4)
-  const recordTransaction = async () => {
-    if (!address || !hash) return
-
-    try {
-      await fetch('/api/trading', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          property_id: property.id,
-          transaction_type: activeTab,
-          token_amount: activeTab === 'buy' ? estimatedOutput : totalCost,
-          usdc_amount: activeTab === 'buy' ? totalCost : estimatedOutput,
-          price_per_token: currentPrice,
-          transaction_hash: hash,
-          execution_source: usingFallback ? 'fallback' : 'orderbook',
-          fallback_reason: usingFallback ? 'insufficient_liquidity' : null
-        })
-      })
+      }, 5000) // Give user time to see transaction hash
+      
     } catch (error) {
-      console.error('Failed to record transaction:', error)
+      console.error('Real fallback trade error:', error)
+      setError(error instanceof Error ? error.message : 'Trade execution failed')
+      setFlowState('error')
     }
   }
 
-  // fix: validate trade inputs (Cursor Rule 4)
+  // fix: validate trade inputs with fallback availability (Cursor Rule 4)
   const validateTrade = (): string | null => {
     if (!amount || parseFloat(amount) <= 0) {
       return 'Please enter a valid amount'
     }
 
+    if (!fallbackAvailability) {
+      return 'Loading availability information...'
+    }
+
+    if (!fallbackAvailability.fallback_enabled) {
+      return 'Fallback trading is disabled for this property'
+    }
+
     const inputAmount = parseFloat(amount)
 
     if (activeTab === 'buy') {
+      // Check user has enough USDC
       const requiredUsdc = parseUnits(inputAmount.toString(), 6)
       if (requiredUsdc > userUsdcBalance) {
         return 'Insufficient USDC balance'
       }
+
+      // Check fallback wallet has enough tokens
+      const tokensNeeded = inputAmount / fallbackAvailability.buy_price
+      if (tokensNeeded > fallbackAvailability.available_to_buy) {
+        return `Insufficient tokens in fallback wallet. Available: ${fallbackAvailability.available_to_buy.toFixed(2)} tokens`
+      }
     } else {
-      const requiredTokens = parseUnits(inputAmount.toString(), 18)
-      if (requiredTokens > userTokenBalance) {
-        return 'Insufficient token balance'
+      // Check user has enough tokens
+      if (inputAmount > fallbackAvailability.user_token_balance) {
+        return `Insufficient token balance. Available: ${fallbackAvailability.user_token_balance.toFixed(2)} tokens`
+      }
+
+      // Check fallback wallet has enough USDC to buy tokens
+      if (inputAmount > fallbackAvailability.available_to_sell) {
+        return `Fallback wallet has insufficient USDC. Maximum you can sell: ${fallbackAvailability.available_to_sell.toFixed(2)} tokens (${formatCurrency(fallbackAvailability.available_to_sell * fallbackAvailability.sell_price)})`
       }
     }
 
@@ -258,6 +334,7 @@ export function TradingModal({
       const fallbackResponse = await fetch('/api/fallback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           property_id: property.id,
           trade_type: activeTab,
@@ -293,54 +370,6 @@ export function TradingModal({
     }
   }
 
-  // fix: safe trading execution via API (Cursor Rule 4)
-  const executeFallbackTrade = async () => {
-    if (!amount || !currentPrice || !address) return
-
-    setFlowState('executing')
-    setError('')
-
-    try {
-      const response = await fetch('/api/trading', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          property_id: property.id.toString(),
-          trade_type: activeTab,
-          amount: parseFloat(amount),
-          execution_method: 'fallback',
-          price_per_token: currentPrice
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Trade execution failed')
-      }
-
-      setFlowState('success')
-      setSuccessMessage(
-        activeTab === 'buy' 
-          ? `Successfully bought ${estimatedOutput.toFixed(2)} tokens for ${formatCurrency(totalCost)}!`
-          : `Successfully sold ${totalCost} tokens for ${formatCurrency(estimatedOutput)}!`
-      )
-      
-      // Refresh balances and close modal after delay
-      setTimeout(() => {
-        onTradeSuccess()
-        onClose()
-      }, 3000)
-      
-    } catch (error) {
-      console.error('Fallback trade error:', error)
-      setError(error instanceof Error ? error.message : 'Trade execution failed')
-      setFlowState('error')
-    }
-  }
-
   // fix: main action handler (Cursor Rule 4)
   const handleMainAction = () => {
     const validationError = validateTrade()
@@ -368,10 +397,16 @@ export function TradingModal({
   }
 
   const getMaxAmount = () => {
+    if (!fallbackAvailability) return '0'
+
     if (activeTab === 'buy') {
-      return formatBalance(userUsdcBalance, 6)
+      const maxByBalance = formatBalance(userUsdcBalance, 6)
+      const maxByAvailability = (fallbackAvailability.available_to_buy * fallbackAvailability.buy_price).toFixed(2)
+      return Math.min(parseFloat(maxByBalance), parseFloat(maxByAvailability)).toFixed(2)
     } else {
-      return formatBalance(userTokenBalance, 18)
+      const maxByBalance = userTokenBalance.toString()
+      const maxByAvailability = fallbackAvailability.available_to_sell.toString()
+      return Math.min(parseFloat(maxByBalance), parseFloat(maxByAvailability)).toFixed(2)
     }
   }
 
@@ -384,12 +419,13 @@ export function TradingModal({
   }
 
   const isMainButtonDisabled = () => {
-    return !amount || 
-           parseFloat(amount) <= 0 || 
-           flowState === 'checking_orderbook' || 
-           flowState === 'using_fallback' ||
-           flowState === 'executing' ||
-           isPending
+    if (!isConnected || !address) return true
+    if (flowState !== 'input') return true
+    if (!amount || parseFloat(amount) <= 0) return true
+    if (!fallbackAvailability || !fallbackAvailability.fallback_enabled) return true
+    
+    const validationError = validateTrade()
+    return !!validationError
   }
 
   return (
@@ -459,8 +495,16 @@ export function TradingModal({
               <p className="text-xs text-openhouse-fg-muted mt-1">
                 Balance: {activeTab === 'buy' 
                   ? `${formatBalance(userUsdcBalance, 6)} USDC`
-                  : `${formatBalance(userTokenBalance, 18)} tokens`
+                  : `${userTokenBalance.toFixed(0)} tokens`
                 }
+                {fallbackAvailability && (
+                  <span className="ml-2 text-openhouse-accent">
+                    • Available: {activeTab === 'buy' 
+                      ? `${fallbackAvailability.available_to_buy.toFixed(2)} tokens`
+                      : `${fallbackAvailability.available_to_sell.toFixed(2)} tokens`
+                    }
+                  </span>
+                )}
               </p>
             </div>
 
@@ -475,7 +519,10 @@ export function TradingModal({
                   }
                 </p>
                 <p className="text-xs text-openhouse-fg-muted mt-1">
-                  At {formatCurrency(currentPrice)} per token • OpenHouse Price
+                  At {fallbackAvailability 
+                    ? formatCurrency(activeTab === 'buy' ? fallbackAvailability.buy_price : fallbackAvailability.sell_price)
+                    : formatCurrency(currentPrice)
+                  } per token • OpenHouse Price {fallbackAvailability && '(2% discount)'}
                 </p>
                 {usingFallback && (
                   <p className="text-xs text-openhouse-accent mt-1 flex items-center gap-1">
@@ -567,4 +614,4 @@ export function TradingModal({
       </DialogContent>
     </Dialog>
   )
-} 
+}
