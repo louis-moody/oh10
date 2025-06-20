@@ -72,7 +72,7 @@ async function deployOrderbookForLondon() {
     console.log('✅ OrderBookExchange deployed:', orderbookAddress);
     console.log('');
 
-    // Update property with orderbook contract address
+    // Update property with orderbook contract address (legacy)
     console.log('📋 Updating property with orderbook address...');
     const { error: updateError } = await supabase
       .from('properties')
@@ -85,6 +85,21 @@ async function deployOrderbookForLondon() {
       console.log(`   ❌ Failed to update property: ${updateError.message}`);
     } else {
       console.log('   ✅ Property updated successfully');
+    }
+
+    // fix: also update property_token_details table where frontend reads from (Cursor Rule 4)
+    console.log('📋 Updating property_token_details with orderbook address...');
+    const { error: tokenDetailsError } = await supabase
+      .from('property_token_details')
+      .update({
+        orderbook_contract_address: orderbookAddress
+      })
+      .eq('property_id', property.id);
+
+    if (tokenDetailsError) {
+      console.log(`   ❌ Failed to update property_token_details: ${tokenDetailsError.message}`);
+    } else {
+      console.log('   ✅ Property token details updated successfully');
     }
 
     // Verify the update

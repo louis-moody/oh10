@@ -73,7 +73,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         return
       }
 
-      // fix: fetch property details from Supabase (Cursor Rule 4)
+      // fix: fetch basic property details from properties table (Cursor Rule 4)
       const { data: propertyData, error: propertyError } = await supabase
         .from('properties')
         .select('*')
@@ -91,7 +91,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
       setProperty(propertyData)
 
-      // fix: fetch token details if property is live (Cursor Rule 4)
+      // fix: fetch token details if property is live (has deployed tokens) (Cursor Rule 4)
       if (isPropertyLive(propertyData.status)) {
         await fetchTokenDetails(id)
       }
@@ -190,23 +190,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     return status === 'completed' || status === 'funded'
   }
 
-  // fix: fetch token details from property_token_details table and orderbook from properties (Cursor Rule 4)
+  // fix: fetch all token details from centralized property_token_details table (Cursor Rule 4)
   const fetchTokenDetails = async (propertyId: string) => {
     try {
       if (!supabase) return
 
-      // Get token details from property_token_details table
+      // Get all token details from property_token_details table (including orderbook address)
       const { data: tokenData, error: tokenError } = await supabase
         .from('property_token_details')
         .select('*')
         .eq('property_id', propertyId)
-        .single()
-
-      // Get orderbook address from properties table
-      const { data: propertyData, error: propertyError } = await supabase
-        .from('properties')
-        .select('orderbook_contract_address')
-        .eq('id', propertyId)
         .single()
 
       if (!tokenError && tokenData) {
@@ -215,7 +208,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           token_symbol: tokenData.token_symbol,
           total_supply: tokenData.total_shares,
           contract_address: tokenData.contract_address,
-          orderbook_contract_address: propertyData?.orderbook_contract_address || null
+          orderbook_contract_address: tokenData.orderbook_contract_address
         })
       }
     } catch (error) {

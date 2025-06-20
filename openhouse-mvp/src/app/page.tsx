@@ -65,7 +65,7 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <p className="text-openhouse-fg-muted text-lg">
-            Tokenized real estate investment on Base L2
+            Build your legacy
           </p>
         </div>
         <LoadingState />
@@ -78,7 +78,7 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <p className="text-openhouse-fg-muted text-lg">
-            Tokenized real estate investment on Base L2
+            Build your legacy
           </p>
         </div>
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -108,14 +108,14 @@ export default function HomePage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <p className="text-openhouse-fg-muted text-lg">
-          Tokenized real estate investment on Base L2
+          Build your legacy
         </p>
       </div>
 
       {properties.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
           {properties.map((property) => (
             <PropertyCard key={property.id} property={property} />
           ))}

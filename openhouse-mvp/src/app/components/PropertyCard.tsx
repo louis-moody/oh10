@@ -193,7 +193,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-openhouse-fg-muted">Price per Token</p>
-            <p className="font-semibold text-openhouse-fg">
+            <p className="font-medium text-openhouse-fg">
               {formatCurrency(completedStats.pricePerToken)}
               {completedStats.lastTradePrice && completedStats.lastTradePrice !== price_per_token && (
                 <span className="text-xs text-openhouse-fg-muted ml-1">
@@ -205,7 +205,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
           {completedStats.estimatedAPY !== null && (
             <div className="text-right">
               <p className="text-sm text-openhouse-fg-muted">Est. APY</p>
-              <p className="font-semibold text-openhouse-success">
+              <p className="font-medium text-openhouse-success">
                 {completedStats.estimatedAPY.toFixed(1)}%
               </p>
             </div>
@@ -231,13 +231,6 @@ export function PropertyCard({ property }: PropertyCardProps) {
             </span>
           </div>
         )}
-
-        <Button 
-          variant="outline" 
-          className="w-full group-hover:bg-openhouse-accent group-hover:text-openhouse-accent-fg group-hover:border-openhouse-accent transition-all"
-        >
-          View Details
-        </Button>
       </CardContent>
     )
   }
@@ -248,13 +241,13 @@ export function PropertyCard({ property }: PropertyCardProps) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-openhouse-fg-muted">Price per token</p>
-          <p className="font-semibold text-openhouse-fg">
+          <p className="font-medium text-openhouse-fg">
             {formatCurrency(price_per_token)}
           </p>
         </div>
         <div className="text-right">
           <p className="text-sm text-openhouse-fg-muted">Progress</p>
-          <p className="font-semibold text-openhouse-fg">
+          <p className="font-medium text-openhouse-fg">
             {progress_percentage}%
           </p>
         </div>
@@ -277,18 +270,11 @@ export function PropertyCard({ property }: PropertyCardProps) {
         <Calendar className="w-4 h-4" />
         <span>Ends {formatDeadline(funding_deadline)}</span>
       </div>
-
-      <Button 
-        variant="outline" 
-        className="w-full group-hover:bg-openhouse-accent group-hover:text-openhouse-accent-fg group-hover:border-openhouse-accent transition-all"
-      >
-        View Details
-      </Button>
     </CardContent>
   )
 
   return (
-    <Card className="group h-full overflow-hidden bg-card border-border/50 hover:border-border transition-all duration-200 hover:shadow-sm">
+    <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200">
       <Link href={`/properties/${id}`} className="block h-full">
         <div className="aspect-[4/3] relative overflow-hidden bg-openhouse-bg-muted">
           {image_url ? (
@@ -315,7 +301,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
         </div>
 
         <CardHeader className="pb-2">
-          <h3 className="font-heading text-lg font-semibold text-openhouse-fg group-hover:text-openhouse-accent transition-colors line-clamp-2">
+          <h3 className="font-heading text-lg font-medium text-openhouse-fg group-hover:text-openhouse-accent transition-colors line-clamp-2">
             {name}
           </h3>
         </CardHeader>
