@@ -1,15 +1,19 @@
-import { NextResponse } from 'next/server'
-import { validateAdminSession } from '@/lib/jwt'
-import { createClient } from '@/lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { verifyJWT } from '@/lib/jwt'
+import { supabaseAdmin } from '@/lib/supabase'
 
 interface FallbackLiquidityRequest {
   property_id: string
   action: 'enable' | 'disable'
   fallback_buy_price?: number
+  liquidity_pool_usdc?: number
+  daily_limit_usdc?: number
+  transaction_limit_usdc?: number
+  discount_percent?: number
 }
 
-// fix: GET - fetch fallback liquidity status for property (Cursor Rule 4)
-export async function GET(request: Request) {
+// fix: GET - fetch fallback liquidity status for property (PRD Requirement #4)
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const propertyId = searchParams.get('property_id')
 
@@ -18,16 +22,47 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Validate admin session
-    const sessionValidation = await validateAdminSession(request)
-    if (!sessionValidation.isValid) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // fix: verify JWT token from cookie (Cursor Rule 3)
+    const token = request.cookies.get('app-session-token')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const supabase = createClient()
+    const payload = await verifyJWT(token)
+    if (!payload || !payload.wallet_address) {
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    const walletAddress = payload.wallet_address.toLowerCase()
+
+    // fix: use service role key for server-side operations (Cursor Rule 3)
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 })
+    }
+
+    // fix: validate session via Supabase RPC (Cursor Rule 3)
+    const { data: sessionValid, error: sessionError } = await supabaseAdmin
+      .rpc('is_valid_session', { 
+        wallet_addr: walletAddress 
+      })
+
+    if (sessionError || !sessionValid) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+
+    // fix: verify user is admin (Cursor Rule 3)
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('is_admin')
+      .eq('wallet_address', walletAddress)
+      .single()
+
+    if (userError || !user?.is_admin) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    }
 
     // Get current property token details
-    const { data: tokenDetails, error: tokenError } = await supabase
+    const { data: tokenDetails, error: tokenError } = await supabaseAdmin
       .from('property_token_details')
       .select('current_price_usdc, fallback_enabled, price_source')
       .eq('property_id', propertyId)
@@ -42,32 +77,39 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Property token details not found' }, { status: 404 })
     }
 
-    // Get admin settings (fallback wallet)
-    const { data: adminSettings, error: settingsError } = await supabase
+    // fix: Get admin settings using fallback_wallet_address column (PRD Requirement #2)
+    const { data: adminSettings, error: settingsError } = await supabaseAdmin
       .from('admin_settings')
       .select('fallback_wallet_address')
+      .eq('setting_key', 'fallback_wallet_address')
       .single()
 
     if (settingsError) {
       console.error('Error fetching admin settings:', settingsError)
+      // PRD Requirement #4: Return 404 if record not found, not crash
+      if (settingsError.code === 'PGRST116') {
+        return NextResponse.json({ error: 'Fallback wallet not configured' }, { status: 404 })
+      }
       return NextResponse.json({ error: 'Failed to fetch admin settings' }, { status: 500 })
     }
 
     // Check if fallback liquidity is currently enabled
-    const { data: liquidityStatus, error: liquidityError } = await supabase
+    const { data: liquidityStatus, error: liquidityError } = await supabaseAdmin
       .from('fallback_liquidity')
-      .select('enabled, buy_price_usdc')
+      .select('enabled, buy_price_usdc, liquidity_pool_usdc, daily_limit_usdc, transaction_limit_usdc, discount_percent')
       .eq('property_id', propertyId)
       .eq('status', 'active')
       .maybeSingle()
 
     if (liquidityError) {
       console.error('Error fetching liquidity status:', liquidityError)
+      return NextResponse.json({ error: 'Failed to fetch liquidity status' }, { status: 500 })
     }
 
-    // Calculate fallback buy price (98% of current price)
-    const fallbackBuyPrice = tokenDetails.current_price_usdc * 0.98
-    const discountPercentage = '2%'
+    // Calculate fallback buy price (use stored discount or default 2%)
+    const discountPercent = liquidityStatus?.discount_percent || 2
+    const fallbackBuyPrice = tokenDetails.current_price_usdc * (1 - discountPercent / 100)
+    const discountPercentage = `${discountPercent}%`
 
     const response = {
       current_status: {
@@ -75,9 +117,12 @@ export async function GET(request: Request) {
         liquidity_enabled: liquidityStatus?.enabled || false,
         current_price_usdc: tokenDetails.current_price_usdc
       },
-      fallback_wallet: adminSettings.fallback_wallet_address || 'Not configured',
+      fallback_wallet: adminSettings?.fallback_wallet_address || 'Not configured',
       fallback_buy_price: fallbackBuyPrice,
-      discount_percentage: discountPercentage
+      discount_percentage: discountPercentage,
+      liquidity_pool_usdc: liquidityStatus?.liquidity_pool_usdc || 0,
+      daily_limit_usdc: liquidityStatus?.daily_limit_usdc || 10000,
+      transaction_limit_usdc: liquidityStatus?.transaction_limit_usdc || 1000
     }
 
     return NextResponse.json(response)
@@ -89,35 +134,87 @@ export async function GET(request: Request) {
 }
 
 // fix: POST - enable/disable fallback liquidity for property (Cursor Rule 4)
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    // Validate admin session
-    const sessionValidation = await validateAdminSession(request)
-    if (!sessionValidation.isValid) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // fix: verify JWT token from cookie (Cursor Rule 3)
+    const token = request.cookies.get('app-session-token')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    const payload = await verifyJWT(token)
+    if (!payload || !payload.wallet_address) {
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    const walletAddress = payload.wallet_address.toLowerCase()
+
+    // fix: use service role key for server-side operations (Cursor Rule 3)
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 })
+    }
+
+    // fix: validate session via Supabase RPC (Cursor Rule 3)
+    const { data: sessionValid, error: sessionError } = await supabaseAdmin
+      .rpc('is_valid_session', { 
+        wallet_addr: walletAddress 
+      })
+
+    if (sessionError || !sessionValid) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+
+    // fix: verify user is admin (Cursor Rule 3)
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('is_admin')
+      .eq('wallet_address', walletAddress)
+      .single()
+
+    if (userError || !user?.is_admin) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
     const body: FallbackLiquidityRequest = await request.json()
-    const { property_id, action, fallback_buy_price } = body
+    const { 
+      property_id, 
+      action, 
+      fallback_buy_price,
+      liquidity_pool_usdc,
+      daily_limit_usdc,
+      transaction_limit_usdc,
+      discount_percent
+    } = body
 
     if (!property_id || !action) {
       return NextResponse.json({ error: 'Property ID and action are required' }, { status: 400 })
     }
 
-    if (action === 'enable' && !fallback_buy_price) {
-      return NextResponse.json({ error: 'Fallback buy price is required when enabling' }, { status: 400 })
+    if (action === 'enable') {
+      if (!fallback_buy_price || !liquidity_pool_usdc) {
+        return NextResponse.json({ 
+          error: 'Fallback buy price and liquidity pool size are required when enabling' 
+        }, { status: 400 })
+      }
+      if (liquidity_pool_usdc <= 0) {
+        return NextResponse.json({ 
+          error: 'Liquidity pool must be greater than 0' 
+        }, { status: 400 })
+      }
     }
 
-    const supabase = createClient()
-
     if (action === 'enable') {
-      // Enable fallback liquidity
-      const { error: insertError } = await supabase
+      // Enable fallback liquidity with configuration
+      const { error: insertError } = await supabaseAdmin
         .from('fallback_liquidity')
         .upsert({
           property_id,
           enabled: true,
           buy_price_usdc: fallback_buy_price,
+          liquidity_pool_usdc: liquidity_pool_usdc || 0,
+          daily_limit_usdc: daily_limit_usdc || 10000,
+          transaction_limit_usdc: transaction_limit_usdc || 1000,
+          discount_percent: discount_percent || 2,
           status: 'active',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -131,7 +228,7 @@ export async function POST(request: Request) {
       }
 
       // Also update property_token_details to enable fallback
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('property_token_details')
         .update({ 
           fallback_enabled: true,
@@ -148,9 +245,9 @@ export async function POST(request: Request) {
         message: 'Fallback liquidity enabled successfully' 
       })
 
-    } else if (action === 'disable') {
+    } else {
       // Disable fallback liquidity
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('fallback_liquidity')
         .update({
           enabled: false,
@@ -165,7 +262,7 @@ export async function POST(request: Request) {
       }
 
       // Also update property_token_details to disable fallback
-      const { error: tokenUpdateError } = await supabase
+      const { error: tokenUpdateError } = await supabaseAdmin
         .from('property_token_details')
         .update({ 
           fallback_enabled: false,
@@ -182,8 +279,6 @@ export async function POST(request: Request) {
         message: 'Fallback liquidity disabled successfully' 
       })
     }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
     console.error('Error in fallback liquidity POST:', error)
