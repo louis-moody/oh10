@@ -16,7 +16,8 @@ import {
   TableRow,
 } from '@/app/components/ui/table'
 import { LoadingState } from '@/app/components/LoadingState'
-import { AlertCircle, DollarSign, Rocket, Shield, CheckCircle, ExternalLink, Copy } from 'lucide-react'
+import { FallbackLiquidityModal } from '@/app/components/FallbackLiquidityModal'
+import { AlertCircle, DollarSign, Rocket, Shield, CheckCircle, ExternalLink, Copy, TrendingDown } from 'lucide-react'
 
 interface PropertyWithFunding {
   id: string
@@ -75,6 +76,10 @@ export default function AdminDashboard() {
   // fix: add USDC collection success modal state (Cursor Rule 7)
   const [showUsdcSuccessModal, setShowUsdcSuccessModal] = useState(false)
   const [usdcCollectionSuccess, setUsdcCollectionSuccess] = useState<UsdcCollectionResult | null>(null)
+  // fix: add fallback liquidity modal state (Cursor Rule 4)
+  const [showFallbackModal, setShowFallbackModal] = useState(false)
+  const [selectedPropertyForFallback, setSelectedPropertyForFallback] = useState<PropertyWithFunding | null>(null)
+
 
   useEffect(() => {
     checkAdminAccess()
@@ -320,6 +325,8 @@ export default function AdminDashboard() {
            !property.token_contract_address // Not yet deployed
   }
 
+
+
   if (!isAdmin) {
     return <LoadingState />
   }
@@ -415,7 +422,22 @@ export default function AdminDashboard() {
                             {isProcessing === property.id ? 'Deploying...' : 'Deploy Token'}
                           </Button>
                         )}
-                        {!canCollectUsdc(property) && !canDeployToken(property) && (
+                        {/* fix: fallback liquidity button for deployed tokens (Cursor Rule 4) */}
+                        {property.token_contract_address && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedPropertyForFallback(property)
+                              setShowFallbackModal(true)
+                            }}
+                            disabled={isProcessing === property.id}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <TrendingDown className="h-4 w-4 mr-1" />
+                            Fallback Liquidity
+                          </Button>
+                        )}
+                        {!canCollectUsdc(property) && !canDeployToken(property) && !property.token_contract_address && (
                           <span className="text-sm text-gray-500">
                             {property.status.startsWith('flagged_') 
                               ? 'Property flagged - no actions available' 
@@ -681,6 +703,23 @@ export default function AdminDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* fix: Fallback Liquidity Modal (Cursor Rule 4) */}
+      {selectedPropertyForFallback && (
+        <FallbackLiquidityModal
+          isOpen={showFallbackModal}
+          onClose={() => {
+            setShowFallbackModal(false)
+            setSelectedPropertyForFallback(null)
+          }}
+          property={selectedPropertyForFallback}
+          onSuccess={() => {
+            // Refresh properties after success
+            fetchProperties()
+          }}
+        />
+      )}
+
     </div>
   )
 } 

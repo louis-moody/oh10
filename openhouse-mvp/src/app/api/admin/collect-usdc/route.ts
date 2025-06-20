@@ -378,19 +378,16 @@ export async function POST(request: NextRequest) {
           console.warn(`⚠️ Database update failed: ${updateError.message}`)
         }
 
-        // fix: create user holding record (Cursor Rule 4)
+        // fix: create user holding record with correct column names (Cursor Rule 4)
         const { error: holdingError } = await supabaseAdmin
           .from('user_holdings')
           .upsert({
-            wallet_address: reservation.wallet_address,
-            property_id: property_id,
-            token_balance: reservation.token_amount,
-            total_invested_usdc: reservation.usdc_amount,
-            average_purchase_price: property.price_per_token,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            user_address: reservation.wallet_address,
+            property_id: parseInt(property_id),
+            token_contract: property.token_contract_address,
+            shares: reservation.token_amount
           }, {
-            onConflict: 'wallet_address,property_id'
+            onConflict: 'user_address,property_id'
           })
 
         if (holdingError) {
