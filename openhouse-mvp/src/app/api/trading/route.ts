@@ -1,189 +1,148 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
 
-// fix: API endpoint for recording trading transactions (Cursor Rule 4)
-export async function POST(request: NextRequest) {
+// fix: API endpoint to record trading transactions (Cursor Rule 4)
+export async function POST(req: NextRequest) {
   try {
-    // fix: verify JWT authentication (Cursor Rule 3)
-    const token = request.cookies.get('auth-token')?.value
-    
+    const cookieStore = await cookies()
+    const token = cookieStore.get('session')?.value
+
     if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const payload = await verifyJWT(token)
-    if (!payload || !payload.wallet_address) {
-      return NextResponse.json(
-        { error: 'Invalid authentication token' },
-        { status: 401 }
-      )
+    const decoded = await verifyJWT(token)
+    if (!decoded || !decoded.wallet_address) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: 'Database configuration error' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
     }
 
-    const body = await request.json()
+    const body = await req.json()
     const {
       property_id,
-      order_type, // 'buy' or 'sell'
+      order_type,
       token_amount,
+      usdc_amount,
       price_per_token,
-      total_amount,
-      protocol_fee,
-      transaction_hash,
-      order_id
+      transaction_hash
     } = body
 
     // fix: validate required fields (Cursor Rule 6)
-    if (!property_id || !order_type || !token_amount || !price_per_token || !total_amount || !transaction_hash) {
-      return NextResponse.json(
-        { error: 'Missing required transaction data' },
-        { status: 400 }
-      )
+    if (!property_id || !order_type || !token_amount || !usdc_amount || !price_per_token || !transaction_hash) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // fix: record transaction in transactions table (Cursor Rule 4)
-    const { data: transaction, error: transactionError } = await supabaseAdmin
+    if (!['buy', 'sell'].includes(order_type)) {
+      return NextResponse.json({ error: 'Invalid order type' }, { status: 400 })
+    }
+
+    // fix: get user record (Cursor Rule 4)
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('wallet_address', decoded.wallet_address)
+      .single()
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // fix: record transaction (Cursor Rule 4)
+    const { data: transaction, error } = await supabaseAdmin
       .from('transactions')
       .insert({
-        property_id,
-        wallet_address: payload.wallet_address,
+        user_id: user.id,
+        property_id: parseInt(property_id),
         transaction_type: order_type,
-        token_amount: parseInt(token_amount),
-        usdc_amount: parseFloat(total_amount),
+        token_amount: parseFloat(token_amount),
+        usdc_amount: parseFloat(usdc_amount),
         price_per_token: parseFloat(price_per_token),
-        protocol_fee: parseFloat(protocol_fee || 0),
         transaction_hash,
-        order_id: order_id || null,
-        status: 'completed',
-        created_at: new Date().toISOString()
+        status: 'completed'
       })
       .select()
       .single()
 
-    if (transactionError) {
-      console.error('❌ Failed to record transaction:', transactionError)
-      return NextResponse.json(
-        { error: 'Failed to record transaction' },
-        { status: 500 }
-      )
+    if (error) {
+      console.error('Error recording transaction:', error)
+      return NextResponse.json({ error: 'Failed to record transaction' }, { status: 500 })
     }
 
-    // fix: update user holdings if buy transaction (Cursor Rule 4)
+    // fix: update user holdings if it's a buy order (Cursor Rule 4)
     if (order_type === 'buy') {
-      await updateUserHoldings(payload.wallet_address, property_id, parseInt(token_amount), 'add')
-    } else if (order_type === 'sell') {
-      await updateUserHoldings(payload.wallet_address, property_id, parseInt(token_amount), 'subtract')
+      // Get property token contract address
+      const { data: propertyTokenDetails } = await supabaseAdmin
+        .from('property_token_details')
+        .select('token_contract_address')
+        .eq('property_id', property_id)
+        .single()
+
+      if (propertyTokenDetails?.token_contract_address) {
+        // Update or create user holdings record
+        const { error: holdingsError } = await supabaseAdmin
+          .from('user_holdings')
+          .upsert({
+            user_id: user.id,
+            property_id: parseInt(property_id),
+            token_contract: propertyTokenDetails.token_contract_address,
+            shares: parseFloat(token_amount)
+          }, {
+            onConflict: 'user_id,property_id',
+            ignoreDuplicates: false
+          })
+
+        if (holdingsError) {
+          console.warn('Failed to update user holdings:', holdingsError)
+        }
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-      transaction,
-      message: 'Transaction recorded successfully'
+    return NextResponse.json({ 
+      success: true, 
+      transaction_id: transaction?.id 
     })
 
   } catch (error) {
-    console.error('❌ Trading API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// fix: helper function to update user holdings (Cursor Rule 4)
-async function updateUserHoldings(
-  walletAddress: string, 
-  propertyId: string, 
-  tokenAmount: number, 
-  operation: 'add' | 'subtract'
-) {
-  try {
-    if (!supabaseAdmin) return
-
-    // fix: get existing holdings (Cursor Rule 4)
-    const { data: existingHolding } = await supabaseAdmin
-      .from('user_holdings')
-      .select('*')
-      .eq('wallet_address', walletAddress)
-      .eq('property_id', propertyId)
-      .single()
-
-    if (existingHolding) {
-      // fix: update existing holding (Cursor Rule 4)
-      const newAmount = operation === 'add' 
-        ? existingHolding.token_amount + tokenAmount
-        : Math.max(0, existingHolding.token_amount - tokenAmount)
-
-      const { error: updateError } = await supabaseAdmin
-        .from('user_holdings')
-        .update({
-          token_amount: newAmount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingHolding.id)
-
-      if (updateError) {
-        console.error('❌ Failed to update user holdings:', updateError)
-      }
-    } else if (operation === 'add') {
-      // fix: create new holding record for buy transactions (Cursor Rule 4)
-      const { error: insertError } = await supabaseAdmin
-        .from('user_holdings')
-        .insert({
-          wallet_address: walletAddress,
-          property_id: propertyId,
-          token_amount: tokenAmount,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-
-      if (insertError) {
-        console.error('❌ Failed to create user holdings:', insertError)
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error updating user holdings:', error)
+    console.error('Trading API error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 // fix: API endpoint for fetching user holdings (Cursor Rule 4)
 export async function GET(request: NextRequest) {
   try {
-    // fix: verify JWT authentication (Cursor Rule 3)
-    const token = request.cookies.get('auth-token')?.value
+    const cookieStore = await cookies()
+    const token = cookieStore.get('session')?.value
     
     if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const payload = await verifyJWT(token)
-    if (!payload || !payload.wallet_address) {
-      return NextResponse.json(
-        { error: 'Invalid authentication token' },
-        { status: 401 }
-      )
+    const decoded = await verifyJWT(token)
+    if (!decoded || !decoded.wallet_address) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: 'Database configuration error' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
     }
 
-    // fix: fetch user holdings with property details (Cursor Rule 4)
+    // fix: fetch user holdings (Cursor Rule 4)
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('wallet_address', decoded.wallet_address)
+      .single()
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     const { data: holdings, error: holdingsError } = await supabaseAdmin
       .from('user_holdings')
       .select(`
@@ -195,15 +154,12 @@ export async function GET(request: NextRequest) {
           price_per_token
         )
       `)
-      .eq('wallet_address', payload.wallet_address)
-      .gt('token_amount', 0)
+      .eq('user_id', user.id)
+      .gt('shares', 0)
 
     if (holdingsError) {
-      console.error('❌ Failed to fetch user holdings:', holdingsError)
-      return NextResponse.json(
-        { error: 'Failed to fetch holdings' },
-        { status: 500 }
-      )
+      console.error('Failed to fetch user holdings:', holdingsError)
+      return NextResponse.json({ error: 'Failed to fetch holdings' }, { status: 500 })
     }
 
     return NextResponse.json({
@@ -212,10 +168,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('❌ Holdings API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Holdings API error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

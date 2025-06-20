@@ -141,6 +141,37 @@ export const PROPERTY_SHARE_TOKEN_ABI = [
     "outputs": [{"name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
+  },
+  // fix: add ERC20 approve and allowance functions for trading (Cursor Rule 4)
+  {
+    "inputs": [
+      {"name": "spender", "type": "address"},
+      {"name": "amount", "type": "uint256"}
+    ],
+    "name": "approve",
+    "outputs": [{"name": "", "type": "bool"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"name": "owner", "type": "address"},
+      {"name": "spender", "type": "address"}
+    ],
+    "name": "allowance",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "name": "owner", "type": "address"},
+      {"indexed": true, "name": "spender", "type": "address"},
+      {"indexed": false, "name": "value", "type": "uint256"}
+    ],
+    "name": "Approval",
+    "type": "event"
   }
 ] as const;
 
