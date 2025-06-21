@@ -2,7 +2,8 @@ import { createConfig, http } from 'wagmi'
 import { base, baseSepolia } from 'wagmi/chains'
 import { coinbaseWallet, injected, metaMask } from 'wagmi/connectors'
 
-const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC
+// fix: use consistent RPC URL environment variable (Cursor Rule 6)
+const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'
 
 // fix: Support MetaMask, Trust Wallet, and Coinbase Wallet with proper detection (Cursor Rule 2)
 export const config = createConfig({

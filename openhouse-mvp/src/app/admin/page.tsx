@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
+import { Card, CardContent } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Badge } from '@/app/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/components/ui/dialog'
@@ -16,8 +16,8 @@ import {
   TableRow,
 } from '@/app/components/ui/table'
 import { LoadingState } from '@/app/components/LoadingState'
-import { FallbackLiquidityModal } from '@/app/components/FallbackLiquidityModal'
-import { AlertCircle, DollarSign, Rocket, Shield, CheckCircle, ExternalLink, Copy, TrendingDown } from 'lucide-react'
+import { AlertCircle, DollarSign, Rocket, CheckCircle, ExternalLink, Copy, Eye } from 'lucide-react'
+import { TokenInformationModal } from '@/app/components/TokenInformationModal'
 
 interface PropertyWithFunding {
   id: string
@@ -28,6 +28,8 @@ interface PropertyWithFunding {
   progress_percentage: number
   token_contract_address?: string
   payment_count: number
+  total_shares: number
+  price_per_token: number
 }
 
 interface TokenDeploymentResult {
@@ -77,9 +79,8 @@ export default function AdminDashboard() {
   const [showUsdcSuccessModal, setShowUsdcSuccessModal] = useState(false)
   const [usdcCollectionSuccess, setUsdcCollectionSuccess] = useState<UsdcCollectionResult | null>(null)
   // fix: add fallback liquidity modal state (Cursor Rule 4)
-  const [showFallbackModal, setShowFallbackModal] = useState(false)
-  const [selectedPropertyForFallback, setSelectedPropertyForFallback] = useState<PropertyWithFunding | null>(null)
-
+  const [showTokenModal, setShowTokenModal] = useState(false)
+  const [selectedProperty, setSelectedProperty] = useState<PropertyWithFunding | null>(null)
 
   useEffect(() => {
     checkAdminAccess()
@@ -167,7 +168,10 @@ export default function AdminDashboard() {
           ...property,
           raised_amount: raisedAmount,
           progress_percentage: Math.round(progressPercentage * 100) / 100,
-          payment_count: paymentCount
+          payment_count: paymentCount,
+          // fix: use actual property values (Cursor Rule 4)
+          total_shares: property.total_shares || 0,
+          price_per_token: property.price_per_token || 0
         })
       }
 
@@ -325,7 +329,11 @@ export default function AdminDashboard() {
            !property.token_contract_address // Not yet deployed
   }
 
-
+  // Property actions
+  const handleViewTokenInfo = (property: PropertyWithFunding) => {
+    setSelectedProperty(property)
+    setShowTokenModal(true)
+  }
 
   if (!isAdmin) {
     return <LoadingState />
@@ -422,29 +430,14 @@ export default function AdminDashboard() {
                             {isProcessing === property.id ? 'Deploying...' : 'Deploy Token'}
                           </Button>
                         )}
-                        {/* fix: fallback liquidity button for deployed tokens (Cursor Rule 4) */}
-                        {property.token_contract_address && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPropertyForFallback(property)
-                              setShowFallbackModal(true)
-                            }}
-                            disabled={isProcessing === property.id}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            <TrendingDown className="h-4 w-4 mr-1" />
-                            Fallback Liquidity
-                          </Button>
-                        )}
-                        {!canCollectUsdc(property) && !canDeployToken(property) && !property.token_contract_address && (
-                          <span className="text-sm text-gray-500">
-                            {property.status.startsWith('flagged_') 
-                              ? 'Property flagged - no actions available' 
-                              : 'No actions available'
-                            }
-                          </span>
-                        )}
+                        <Button
+                          onClick={() => handleViewTokenInfo(property)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View Details
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -704,19 +697,15 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* fix: Fallback Liquidity Modal (Cursor Rule 4) */}
-      {selectedPropertyForFallback && (
-        <FallbackLiquidityModal
-          isOpen={showFallbackModal}
+      {/* Token Information Modal */}
+      {selectedProperty && (
+        <TokenInformationModal
+          isOpen={showTokenModal}
           onClose={() => {
-            setShowFallbackModal(false)
-            setSelectedPropertyForFallback(null)
+            setShowTokenModal(false)
+            setSelectedProperty(null)
           }}
-          property={selectedPropertyForFallback}
-          onSuccess={() => {
-            // Refresh properties after success
-            fetchProperties()
-          }}
+          property={selectedProperty}
         />
       )}
 

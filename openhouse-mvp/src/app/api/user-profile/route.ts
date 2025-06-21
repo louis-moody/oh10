@@ -58,8 +58,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // fix: fetch user holdings for trading modal (Cursor Rule 4)
+    const { data: holdings, error: holdingsError } = await supabaseAdmin
+      .from('user_holdings')
+      .select(`
+        property_id,
+        shares,
+        token_contract,
+        properties (
+          name,
+          status
+        )
+      `)
+      .eq('user_id', userData.id)
+
+    if (holdingsError) {
+      console.error('Error fetching holdings:', holdingsError)
+    }
+
     return NextResponse.json({
-      user: userData
+      user: {
+        ...userData,
+        holdings: holdings || []
+      }
     })
 
   } catch {

@@ -38,27 +38,15 @@ export interface PropertyWithProgress extends Property {
   progress_percentage: number
 }
 
-// fix: enhanced property token details with pricing and fallback support (Cursor Rule 4)
+// fix: clean property token details for pure orderbook trading (Cursor Rule 4)
 export interface PropertyTokenDetails {
-  id: number
+  id: string
   property_id: string
   contract_address: string
-  token_name: string
-  token_symbol: string
-  total_shares: number
-  deployment_hash: string
-  treasury_address: string
-  operator_address: string
-  funding_goal_usdc: number
-  funding_deadline: string
-  price_per_token: number
-  deployment_timestamp: string
   orderbook_contract_address?: string
-  // New fields for simplified trading
-  current_price_usdc?: number
-  price_last_updated_at?: string
-  price_source?: 'openhouse' | 'market' | 'fallback'
-  fallback_enabled?: boolean
+  yield_distributor_address?: string
+  total_supply: number
+  price_source: 'openhouse' | 'last_trade'
   created_at: string
   updated_at: string
 }
@@ -74,7 +62,7 @@ export interface AdminSettings {
   updated_at: string
 }
 
-// fix: enhanced transaction type with fallback tracking (Cursor Rule 4)
+// fix: clean transaction type for pure orderbook trading (Cursor Rule 4)
 export interface Transaction {
   id: number
   user_id: string
@@ -85,29 +73,20 @@ export interface Transaction {
   price_per_token: number
   transaction_hash: string
   status: 'pending' | 'completed' | 'failed'
-  // New fields for simplified trading
-  execution_source?: 'orderbook' | 'fallback'
-  fallback_reason?: string
-  original_price_usdc?: number
-  executed_price_usdc?: number
-  slippage_bps?: number
+  execution_source: 'orderbook'
   created_at: string
   updated_at: string
 }
 
 // fix: enhanced user holdings with ownership tracking (Cursor Rule 4)
-export interface UserHoldings {
-  id: number
+export interface UserHolding {
+  id: string
   user_id: string
-  property_id: number
-  token_contract: string
+  property_id: string
   shares: number
-  // New fields for simplified trading
-  owner_type?: 'user' | 'protocol' | 'treasury'
-  acquisition_source?: 'purchase' | 'fallback' | 'transfer'
-  last_updated_at?: string
-  created_at: string
-  updated_at: string
+  acquisition_price: number
+  acquisition_source?: 'purchase' | 'transfer'
+  acquired_at: string
 }
 
 // fix: order book state tracking type (Cursor Rule 4)
@@ -136,14 +115,7 @@ export interface PriceHistory {
   recorded_at: string
 }
 
-// fix: simplified trading interface types (Cursor Rule 4)
-export interface TradingPrice {
-  current_price: number
-  source: 'openhouse' | 'market' | 'fallback'
-  last_updated: string
-  fallback_available: boolean
-}
-
+// fix: clean trading interface types for pure orderbook (Cursor Rule 4)
 export interface TradeEstimate {
   input_amount: number
   output_amount: number
@@ -151,16 +123,7 @@ export interface TradeEstimate {
   protocol_fee: number
   total_fee: number
   net_amount: number
-  execution_method: 'orderbook' | 'fallback'
-  estimated_slippage?: number
-}
-
-// fix: fallback wallet configuration type (Cursor Rule 3)
-export interface FallbackConfig {
-  wallet_address: string
-  max_slippage_bps: number
-  timeout_seconds: number
-  enabled: boolean
+  execution_method: 'orderbook'
 }
 
 // fix: trading validation result type (Cursor Rule 6)
@@ -187,29 +150,6 @@ export const PriceUtils = {
     } catch (error) {
       console.error('Failed to get current price:', error)
       return null
-    }
-  },
-
-  // Check if fallback should be used for a trade
-  shouldUseFallback: async (
-    propertyId: string, 
-    tradeType: 'buy' | 'sell', 
-    amountUsdc: number
-  ): Promise<boolean> => {
-    if (!supabase) return false
-    
-    try {
-      const { data, error } = await supabase.rpc('should_use_fallback', {
-        target_property_id: propertyId,
-        trade_type: tradeType,
-        amount_usdc: amountUsdc
-      })
-      
-      if (error) throw error
-      return data || false
-    } catch (error) {
-      console.error('Failed to check fallback status:', error)
-      return false
     }
   },
 
@@ -252,4 +192,11 @@ export const PriceUtils = {
       }
     }
   }
+}
+
+export const supabaseHelpers = {
+  // ... existing code ...
+
+  // fix: remove shouldUseFallback function (Cursor Rule 15)
+  // All fallback logic has been removed from the system
 } 

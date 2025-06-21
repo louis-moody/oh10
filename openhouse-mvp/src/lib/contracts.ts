@@ -363,7 +363,7 @@ export function getUsdcAddress(chainId: number): `0x${string}` | null {
 // fix: create public client for contract reads (Cursor Rule 4)
 export function getPublicClient(chainId: number) {
   const chain = chainId === base.id ? base : baseSepolia;
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC || 
+  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || 
     (chainId === base.id ? 'https://mainnet.base.org' : 'https://sepolia.base.org');
   
   return createPublicClient({
