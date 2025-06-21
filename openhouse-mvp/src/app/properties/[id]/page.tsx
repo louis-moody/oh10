@@ -146,17 +146,20 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     try {
       if (!supabase) return
 
-      // Get available shares from active sell orders
+      // fix: get available shares for purchase from active sell orders only (Cursor Rule 4)
       const { data: sellOrders } = await supabase
         .from('order_book')
         .select('shares_remaining')
         .eq('property_id', propertyId)
         .eq('order_type', 'sell')
         .eq('status', 'active')
+        .gt('shares_remaining', 0) // Only orders with remaining shares
 
-      if (sellOrders) {
+      if (sellOrders && sellOrders.length > 0) {
         const totalAvailable = sellOrders.reduce((sum, order) => sum + order.shares_remaining, 0)
         setAvailableShares(totalAvailable)
+      } else {
+        setAvailableShares(0) // No shares available for purchase
       }
 
       // Get current market price from last trade
@@ -578,7 +581,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     )
   }
 
-  // fix: render activity tab with BaseScan links (Cursor Rule 4)
+  // fix: render activity tab with Foundation/OpenSea style (Cursor Rule 4)
   const renderActivityTab = () => {
     if (propertyActivity.length === 0) {
       return (
@@ -590,46 +593,71 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
 
     return (
-      <div className="space-y-4">
-        {propertyActivity.map((activity) => (
-          <div key={activity.id} className="flex items-center justify-between p-4 border border-openhouse-border rounded-lg">
+      <div className="space-y-0">
+        {propertyActivity.map((activity, index) => (
+          <div key={activity.id} className={`flex items-center justify-between py-4 ${
+            index !== propertyActivity.length - 1 ? 'border-b border-openhouse-border' : ''
+          }`}>
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${
-                activity.activity_type === 'buy_order' ? 'bg-openhouse-success' :
-                activity.activity_type === 'sell_order' ? 'bg-openhouse-warning' :
-                activity.activity_type === 'trade_executed' ? 'bg-openhouse-accent' :
-                'bg-openhouse-fg-muted'
-              }`} />
+              {/* Activity Icon */}
+              <div className="w-10 h-10 rounded-full bg-openhouse-bg-muted flex items-center justify-center">
+                <div className={`w-2 h-2 rounded-full ${
+                  activity.activity_type === 'buy_order' ? 'bg-openhouse-success' :
+                  activity.activity_type === 'sell_order' ? 'bg-openhouse-warning' :
+                  activity.activity_type === 'trade_executed' ? 'bg-openhouse-accent' :
+                  'bg-openhouse-fg-muted'
+                }`} />
+              </div>
+              
               <div>
+                {/* Activity Title */}
                 <p className="font-medium text-openhouse-fg">
-                  {activity.activity_type === 'buy_order' && 'Buy Order Placed'}
-                  {activity.activity_type === 'sell_order' && 'Sell Order Placed'}
-                  {activity.activity_type === 'trade_executed' && 'Trade Executed'}
-                  {activity.activity_type === 'yield_distributed' && 'Yield Distributed'}
+                  {activity.activity_type === 'buy_order' && 'Buy order placed by'}
+                  {activity.activity_type === 'sell_order' && 'Sell order placed by'}
+                  {activity.activity_type === 'trade_executed' && 'Trade executed by'}
+                  {activity.activity_type === 'yield_distributed' && 'Yield distributed to'}
+                  {' '}
+                  <span className="font-semibold">
+                    {activity.wallet_address.slice(0, 6)}...{activity.wallet_address.slice(-4)}
+                  </span>
                 </p>
-                <p className="text-sm text-openhouse-fg-muted">
-                  {activity.share_count && `${activity.share_count} shares`}
-                  {activity.price_per_share && ` @ ${formatCurrency(activity.price_per_share)}`}
-                  {activity.total_amount && ` • Total: ${formatCurrency(activity.total_amount)}`}
-                </p>
-                <p className="text-xs text-openhouse-fg-muted">
-                  {activity.wallet_address.slice(0, 6)}...{activity.wallet_address.slice(-4)}
-                </p>
+                
+                {/* Activity Details */}
+                <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
+                  <span>{formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}</span>
+                  {activity.transaction_hash && (
+                    <>
+                      <span>•</span>
+                      <Link
+                        href={`https://basescan.org/tx/${activity.transaction_hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-openhouse-accent hover:underline inline-flex items-center gap-1"
+                      >
+                        View transaction ↗
+                      </Link>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
+            
+            {/* Price/Amount */}
             <div className="text-right">
-              <p className="text-sm text-openhouse-fg-muted">
-                {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-              </p>
-              {activity.transaction_hash && (
-                <Link
-                  href={`https://basescan.org/tx/${activity.transaction_hash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-openhouse-accent hover:underline"
-                >
-                  View on BaseScan
-                </Link>
+              {activity.share_count && activity.price_per_share && (
+                <>
+                  <p className="font-semibold text-openhouse-fg">
+                    {formatCurrency(activity.price_per_share)}
+                  </p>
+                  <p className="text-sm text-openhouse-fg-muted">
+                    {activity.share_count} share{activity.share_count !== 1 ? 's' : ''}
+                  </p>
+                </>
+              )}
+              {activity.total_amount && !activity.price_per_share && (
+                <p className="font-semibold text-openhouse-fg">
+                  {formatCurrency(activity.total_amount)}
+                </p>
               )}
             </div>
           </div>
