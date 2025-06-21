@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { ArrowRightLeft, TrendingUp, TrendingDown, AlertCircle, CheckCircle, DollarSign, ExternalLink } from 'lucide-react'
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { LoadingState } from './LoadingState'
+import { Loader2 } from 'lucide-react'
 
 interface TradingModalProps {
   isOpen: boolean
@@ -58,13 +58,23 @@ export function TradingModal({
     hash,
   })
 
+  // fix: simple transaction state - no complex approval tracking (Cursor Rule 7)
+  const [transactionStep, setTransactionStep] = useState<'idle' | 'approving' | 'trading'>('idle')
+
   // Load user balances
   useEffect(() => {
     if (address && isOpen) {
+      console.log('🔍 Loading balances for:', {
+        address,
+        chainId,
+        isConnected,
+        propertyContract: property.contract_address,
+        orderbookContract: property.orderbook_contract_address
+      })
       loadUserBalances()
       loadOrderbookStatus()
     }
-  }, [address, isOpen])
+  }, [address, isOpen, chainId, isConnected])
 
   const getUsdcAddress = () => {
     return process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
@@ -105,6 +115,88 @@ export function TradingModal({
     setOrderbookEnabled(!!property.orderbook_contract_address)
   }
 
+  // fix: SIMPLE SELL FLOW - approve then sell in sequence (Cursor Rule 7)
+  const executeSellWithApproval = async () => {
+    console.log('🔴 executeSellWithApproval called with:', {
+      address,
+      contractAddress: property.contract_address,
+      orderbookAddress: property.orderbook_contract_address,
+      shareAmount,
+      isConnected,
+      chainId,
+      expectedChainId: 84532 // Base Sepolia
+    })
+
+    // fix: check if user is on correct network (Cursor Rule 6)
+    if (chainId !== 84532) {
+      console.log('🔴 Wrong network:', { chainId, expected: 84532 })
+      setError('Please switch to Base Sepolia network')
+      setFlowState('error')
+      return
+    }
+
+    if (!address || !property.contract_address || !property.orderbook_contract_address || !shareAmount) {
+      console.log('🔴 Missing required parameters:', {
+        hasAddress: !!address,
+        address,
+        hasContractAddress: !!property.contract_address,
+        contractAddress: property.contract_address,
+        hasOrderbookAddress: !!property.orderbook_contract_address,
+        orderbookAddress: property.orderbook_contract_address,
+        hasShareAmount: !!shareAmount,
+        shareAmount
+      })
+      setError('Missing required information for trade')
+      setFlowState('error')
+      return
+    }
+
+    try {
+      console.log('🔴 Setting transaction state to approving')
+      setTransactionStep('approving')
+      setFlowState('executing')
+      
+      console.log('🔴 Importing ethers...')
+      const ethers = await import('ethers')
+      const requiredAmount = ethers.parseUnits(shareAmount, 18)
+      
+      console.log('📝 Step 1: Approving tokens for sale', {
+        tokenContract: property.contract_address,
+        spender: property.orderbook_contract_address,
+        amount: requiredAmount.toString(),
+        shareAmount,
+        shareAmountParsed: parseFloat(shareAmount)
+      })
+
+      console.log('🔴 About to call writeContract...')
+      // First approve tokens
+      const result = writeContract({
+        address: property.contract_address as `0x${string}`,
+        abi: [
+          {
+            name: 'approve',
+            type: 'function',
+            stateMutability: 'nonpayable',
+            inputs: [
+              { name: 'spender', type: 'address' },
+              { name: 'amount', type: 'uint256' }
+            ],
+            outputs: [{ name: '', type: 'bool' }]
+          }
+        ],
+        functionName: 'approve',
+        args: [property.orderbook_contract_address as `0x${string}`, requiredAmount]
+      })
+      
+      console.log('📝 writeContract result:', result)
+    } catch (error) {
+      console.error('🔴 Sell with approval error:', error)
+      setTransactionStep('idle')
+      setFlowState('error')
+      setError(error instanceof Error ? error.message : 'Transaction failed')
+    }
+  }
+
   // fix: REAL WALLET TRANSACTION - NO FAKE ACTIONS (Cursor Rule 1)
   const executeTrade = async () => {
     console.log('🚀 executeTrade called', { 
@@ -112,11 +204,23 @@ export function TradingModal({
       orderbook: property.orderbook_contract_address,
       activeTab,
       usdcAmount,
-      shareAmount
+      shareAmount,
+      isConnected,
+      chainId
     })
 
+    // fix: check if user is on correct network (Cursor Rule 6)
+    if (chainId !== 84532) {
+      setError('Please switch to Base Sepolia network')
+      setFlowState('error')
+      return
+    }
+
     if (!address || !property.orderbook_contract_address) {
-      console.log('❌ Missing address or orderbook contract')
+      console.log('❌ Missing address or orderbook contract:', {
+        hasAddress: !!address,
+        hasOrderbook: !!property.orderbook_contract_address
+      })
       return
     }
 
@@ -156,7 +260,7 @@ export function TradingModal({
         
         // fix: DIRECT WALLET CALL - createBuyOrder (Cursor Rule 1)
         console.log('📞 Calling writeContract for buy order...')
-        writeContract({
+        const buyResult = writeContract({
           address: property.orderbook_contract_address as `0x${string}`,
           abi: [
             {
@@ -173,6 +277,7 @@ export function TradingModal({
           functionName: 'createBuyOrder',
           args: [tokenAmount, priceWei]
         })
+        console.log('📞 Buy writeContract result:', buyResult)
       } else {
         const sharesWei = ethers.parseUnits(shareAmount, 18)
         const priceWei = ethers.parseUnits(property.price_per_token.toString(), 18)
@@ -185,7 +290,7 @@ export function TradingModal({
         
         // fix: DIRECT WALLET CALL - createSellOrder (Cursor Rule 1)
         console.log('📞 Calling writeContract for sell order...')
-        writeContract({
+        const sellResult = writeContract({
           address: property.orderbook_contract_address as `0x${string}`,
           abi: [
             {
@@ -202,12 +307,14 @@ export function TradingModal({
           functionName: 'createSellOrder',
           args: [sharesWei, priceWei]
         })
+        console.log('📞 Sell writeContract result:', sellResult)
       }
       
     } catch (error) {
       console.error('Trade execution error:', error)
       setError(error instanceof Error ? error.message : 'Trade execution failed')
       setFlowState('error')
+      setTransactionStep('idle')
     }
   }
 
@@ -241,15 +348,27 @@ export function TradingModal({
   useEffect(() => {
     if (isConfirmed) {
       console.log('✅ Transaction confirmed!')
-      setFlowState('success')
-      setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
       
-      setTimeout(() => {
-        onTradeSuccess()
-        onClose()
-      }, 3000)
+      // fix: handle approval step vs final trade (Cursor Rule 7)
+      if (transactionStep === 'approving' && activeTab === 'sell') {
+        console.log('✅ Approval confirmed! Now creating sell order...')
+        setTransactionStep('trading')
+        // Automatically proceed to sell order
+        setTimeout(() => {
+          executeTrade()
+        }, 1000)
+      } else {
+        setFlowState('success')
+        setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
+        setTransactionStep('idle')
+        
+        setTimeout(() => {
+          onTradeSuccess()
+          onClose()
+        }, 3000)
+      }
     }
-  }, [isConfirmed, activeTab, onTradeSuccess, onClose])
+  }, [isConfirmed, activeTab, transactionStep, onTradeSuccess, onClose])
 
   // fix: calculate shares from USDC amount at OpenHouse price (Cursor Rule 1)
   const calculateShares = () => {
@@ -356,28 +475,26 @@ export function TradingModal({
           </div>
         )}
 
-        {flowState === 'input' && orderbookEnabled && (
-          <div className="space-y-4">
-            {/* Balance Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Your Balances</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">USDC:</span>
-                  <span className="text-sm font-medium">${formatUsdcBalance()}</span>
+        {(flowState === 'input' || flowState === 'executing') && orderbookEnabled && (
+          <div className="space-y-6">
+            {/* Balance Information - Compact */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Your Balances</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">USDC</p>
+                  <p className="text-lg font-semibold">${formatUsdcBalance()}</p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">{property.name} tokens:</span>
-                  <span className="text-sm font-medium">{userTokenBalance.toFixed(2)}</span>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">{property.name} tokens</p>
+                  <p className="text-lg font-semibold">{userTokenBalance.toFixed(2)}</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Trade Input */}
+            {/* Trade Input - Single Card */}
             <Card>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pt-6">
                 {activeTab === 'buy' && (
                   <div>
                     <label className="text-sm font-medium text-gray-700">USDC Amount</label>
@@ -437,11 +554,37 @@ export function TradingModal({
                     <p className="text-xs text-red-700 mt-1">
                       At fixed price: {formatCurrency(property.price_per_token)} per share
                     </p>
+                    {/* fix: simple status message (Cursor Rule 7) */}
+                    {transactionStep === 'approving' && (
+                      <p className="text-xs text-yellow-700 mt-2 font-medium">
+                        ⏳ Approving tokens for sale...
+                      </p>
+                    )}
                   </div>
                 )}
 
+                {/* fix: SIMPLE ONE BUTTON - wallet handles approval automatically (Cursor Rule 7) */}
                 <Button
-                  onClick={executeTrade}
+                  onClick={() => {
+                    console.log('🔴 BUTTON CLICKED!', {
+                      activeTab,
+                      transactionStep,
+                      shareAmount,
+                      usdcAmount,
+                      isPending,
+                      isConfirming,
+                      address,
+                      orderbook: property.orderbook_contract_address
+                    })
+                    
+                    if (activeTab === 'sell' && transactionStep === 'idle') {
+                      console.log('🔴 Calling executeSellWithApproval')
+                      executeSellWithApproval()
+                    } else {
+                      console.log('🔴 Calling executeTrade')
+                      executeTrade()
+                    }
+                  }}
                   disabled={
                     isPending || isConfirming ||
                     (activeTab === 'buy' 
@@ -456,53 +599,48 @@ export function TradingModal({
                 >
                   <DollarSign className="h-4 w-4 mr-2" />
                   {isPending || isConfirming 
-                    ? 'Processing...' 
+                    ? transactionStep === 'approving' ? 'Approving...' : 'Processing...'
                     : activeTab === 'buy' 
                       ? `Buy Shares for $${usdcAmount || '0'}` 
                       : `Sell ${shareAmount || '0'} Shares`
                   }
                 </Button>
 
-                <div className="text-xs text-gray-500 space-y-1">
-                  <p>• Fixed price trading at OpenHouse rates</p>
-                  <p>• Instant execution when you have sufficient balance</p>
-                  <p>• 0.5% protocol fee applies to all trades</p>
+                <div className="text-xs text-gray-500 text-center mt-4">
+                  Fixed price trading • Instant execution • 0.5% protocol fee
                 </div>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {(flowState === 'executing' || isPending || isConfirming) && (
-          <div className="py-8">
-            <LoadingState />
-            <div className="text-center mt-4">
-              {isPending && (
-                <div>
-                  <p className="text-gray-800 font-medium">Check your wallet to sign the transaction</p>
-                  <p className="text-gray-500 text-sm mt-1">This should take just a few seconds</p>
-                </div>
-              )}
-              {isConfirming && (
-                <div>
-                  <p className="text-gray-800 font-medium">Transaction submitted to blockchain</p>
-                  <p className="text-gray-500 text-sm mt-1">Confirming on Base Sepolia - usually takes 30-60 seconds</p>
-                  {hash && (
-                    <a 
-                      href={`https://sepolia.basescan.org/tx/${hash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 text-sm mt-2 inline-flex items-center gap-1"
-                    >
-                      View on BaseScan <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              )}
-              {flowState === 'executing' && !isPending && !isConfirming && (
-                <p className="text-gray-600">Preparing transaction...</p>
-              )}
+        {isPending && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            <div>
+              <p className="text-blue-800 font-medium">Check your wallet to sign</p>
+              <p className="text-blue-700 text-sm">This should take just a few seconds</p>
             </div>
+          </div>
+        )}
+
+        {isConfirming && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <Loader2 className="h-5 w-5 animate-spin text-yellow-600" />
+              <p className="text-yellow-800 font-medium">Transaction confirming...</p>
+            </div>
+            <p className="text-yellow-700 text-sm mb-3">Usually takes 30-60 seconds on Base Sepolia</p>
+            {hash && (
+              <a 
+                href={`https://sepolia.basescan.org/tx/${hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 text-sm inline-flex items-center gap-1"
+              >
+                View on BaseScan <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
           </div>
         )}
 
