@@ -358,6 +358,9 @@ export function TradingModal({
           executeTrade()
         }, 1000)
       } else {
+        // fix: record activity in Supabase when trade is confirmed (Cursor Rule 4)
+        recordTradeActivity()
+        
         setFlowState('success')
         setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
         setTransactionStep('idle')
@@ -369,6 +372,56 @@ export function TradingModal({
       }
     }
   }, [isConfirmed, activeTab, transactionStep, onTradeSuccess, onClose])
+
+  // fix: record trading activity in Supabase for activity tab (Cursor Rule 4)
+  const recordTradeActivity = async () => {
+    try {
+      console.log('📝 Recording trade activity:', {
+        propertyId: property.id,
+        activeTab,
+        hash,
+        address,
+        shareAmount,
+        usdcAmount
+      })
+
+      // Calculate final amounts
+      const shares = activeTab === 'buy' ? calculateShares() : parseFloat(shareAmount)
+      const totalAmount = activeTab === 'buy' ? parseFloat(usdcAmount) : calculateProceeds()
+
+      const activityData = {
+        property_id: property.id,
+        activity_type: activeTab === 'buy' ? 'buy_order' : 'sell_order',
+        wallet_address: address,
+        share_count: Math.round(shares),
+        price_per_share: property.price_per_token,
+        total_amount: totalAmount,
+        transaction_hash: hash,
+        created_at: new Date().toISOString()
+      }
+
+      console.log('📝 Activity data to record:', activityData)
+
+      // Try to record in property_activity table
+      const response = await fetch('/api/activity/record', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(activityData)
+      })
+
+      if (response.ok) {
+        console.log('✅ Activity recorded successfully')
+      } else {
+        console.log('⚠️ Failed to record activity in database:', await response.text())
+      }
+
+    } catch (error) {
+      console.error('Error recording trade activity:', error)
+    }
+  }
 
   // fix: calculate shares from USDC amount at OpenHouse price (Cursor Rule 1)
   const calculateShares = () => {

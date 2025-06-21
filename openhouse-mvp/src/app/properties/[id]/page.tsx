@@ -1,10 +1,10 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Building2, ArrowLeft, Calendar, DollarSign, Users, Clock, TrendingUp } from 'lucide-react'
+import { Building2, ArrowLeft, DollarSign, TrendingUp, Info, Activity, Users, Clock } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { supabase, type Property } from '@/lib/supabase'
+import { supabase, type Property, type PropertyDetails, type PropertyFinancials, type PropertyActivity, type PropertyTokenDetails } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
@@ -20,6 +20,8 @@ interface PropertyDetailPageProps {
   }>
 }
 
+type TabType = 'details' | 'financials' | 'activity'
+
 export default function PropertyDetailPage({ params }: PropertyDetailPageProps) {
   const [property, setProperty] = useState<Property | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -32,16 +34,22 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     token_amount: number
     payment_status: string
   } | null>(null)
-  // fix: add trading modal states (Cursor Rule 4)
+  
+  // fix: trading modal and token info states (Cursor Rule 4)
   const [isTokenInfoModalOpen, setIsTokenInfoModalOpen] = useState(false)
   const [isTradingModalOpen, setIsTradingModalOpen] = useState(false)
-  const [tokenDetails, setTokenDetails] = useState<{
-    token_name: string
-    token_symbol: string
-    total_supply: number
-    contract_address: string
-    orderbook_contract_address?: string
-  } | null>(null)
+  const [tokenDetails, setTokenDetails] = useState<PropertyTokenDetails | null>(null)
+  
+  // fix: tab section states for production page (Cursor Rule 4)
+  const [activeTab, setActiveTab] = useState<TabType>('details')
+  const [propertyDetails, setPropertyDetails] = useState<PropertyDetails | null>(null)
+  const [propertyFinancials, setPropertyFinancials] = useState<PropertyFinancials | null>(null)
+  const [propertyActivity, setPropertyActivity] = useState<PropertyActivity[]>([])
+  
+  // fix: live market data states (Cursor Rule 4)
+  const [availableShares, setAvailableShares] = useState<number | null>(null)
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
+  
   const { isConnected, address } = useAccount()
   const [propertyId, setPropertyId] = useState<string>('')
 
@@ -49,7 +57,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     const getParams = async () => {
       const resolvedParams = await params
       setPropertyId(resolvedParams.id)
-      fetchPropertyDetails(resolvedParams.id)
+      fetchPropertyData(resolvedParams.id)
     }
     getParams()
   }, [params])
@@ -63,7 +71,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
   }, [propertyId, address, isConnected])
 
-  const fetchPropertyDetails = async (id: string) => {
+  // fix: comprehensive property data fetching (Cursor Rule 4)
+  const fetchPropertyData = async (id: string) => {
     try {
       setIsLoading(true)
       setError(null)
@@ -91,39 +100,162 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
       setProperty(propertyData)
 
-      // fix: fetch token details if property is live (has deployed tokens) (Cursor Rule 4)
-      if (isPropertyLive(propertyData.status)) {
-        await fetchTokenDetails(id)
+      // fix: parallel data fetching for performance (Cursor Rule 4)
+      await Promise.all([
+        fetchTokenDetails(id),
+        fetchPropertyDetailsData(id),
+        fetchPropertyFinancials(id),
+        fetchPropertyActivity(id),
+        fetchFundingProgress(id, propertyData.funding_goal_usdc)
+      ])
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
+      setError(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // fix: fetch token details and market data for live properties (Cursor Rule 4)
+  const fetchTokenDetails = async (propertyId: string) => {
+    try {
+      if (!supabase) return
+
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('property_token_details')
+        .select('*')
+        .eq('property_id', propertyId)
+        .single()
+
+      if (!tokenError && tokenData) {
+        setTokenDetails(tokenData)
+        
+        // fix: fetch live market data for trading properties (Cursor Rule 4)
+        if (isPropertyLive(property?.status || '')) {
+          await fetchMarketData(propertyId)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch token details:', error)
+    }
+  }
+
+  // fix: fetch real market data from orderbook and transactions (Cursor Rule 4)
+  const fetchMarketData = async (propertyId: string) => {
+    try {
+      if (!supabase) return
+
+      // Get available shares from active sell orders
+      const { data: sellOrders } = await supabase
+        .from('order_book')
+        .select('shares_remaining')
+        .eq('property_id', propertyId)
+        .eq('order_type', 'sell')
+        .eq('status', 'active')
+
+      if (sellOrders) {
+        const totalAvailable = sellOrders.reduce((sum, order) => sum + order.shares_remaining, 0)
+        setAvailableShares(totalAvailable)
       }
 
-      // fix: fetch funding progress from payment_authorizations (Cursor Rule 4)
+      // Get current market price from last trade
+      const { data: lastTrade } = await supabase
+        .from('transactions')
+        .select('price_per_token')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (lastTrade?.price_per_token) {
+        setCurrentPrice(lastTrade.price_per_token)
+      }
+    } catch (error) {
+      console.error('Failed to fetch market data:', error)
+    }
+  }
+
+  // fix: fetch property details from property_details table (Cursor Rule 4)
+  const fetchPropertyDetailsData = async (propertyId: string) => {
+    try {
+      if (!supabase) return
+
+      const { data, error } = await supabase
+        .from('property_details')
+        .select('*')
+        .eq('property_id', propertyId)
+        .single()
+
+      if (!error && data) {
+        setPropertyDetails(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch property details:', error)
+    }
+  }
+
+  // fix: fetch property financials with correct column names (Cursor Rule 4)
+  const fetchPropertyFinancials = async (propertyId: string) => {
+    try {
+      if (!supabase) return
+
+      const { data, error } = await supabase
+        .from('property_financials')
+        .select('*')
+        .eq('property_id', propertyId)
+        .single()
+
+      if (!error && data) {
+        setPropertyFinancials(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch property financials:', error)
+    }
+  }
+
+  // fix: fetch property activity from property_activity table only (Cursor Rule 4)
+  const fetchPropertyActivity = async (propertyId: string) => {
+    try {
+      if (!supabase) return
+
+      const { data, error } = await supabase
+        .from('property_activity')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (!error && data) {
+        setPropertyActivity(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch property activity:', error)
+    }
+  }
+
+  // fix: fetch funding progress from payment_authorizations (Cursor Rule 4)
+  const fetchFundingProgress = async (propertyId: string, fundingGoal: number) => {
+    try {
+      if (!supabase) return
+
       const { data: authData, error: authError } = await supabase
         .from('payment_authorizations')
         .select('usdc_amount')
-        .eq('property_id', id)
+        .eq('property_id', propertyId)
         .in('payment_status', ['approved', 'transferred'])
 
       if (!authError && authData) {
         const raisedAmount = authData.reduce((sum, auth) => sum + parseFloat(auth.usdc_amount), 0)
-        const progressPercentage = Math.min((raisedAmount / propertyData.funding_goal_usdc) * 100, 100)
+        const progressPercentage = Math.min((raisedAmount / fundingGoal) * 100, 100)
         
         setFundingProgress({
           raised_amount: raisedAmount,
           progress_percentage: Math.round(progressPercentage * 100) / 100
         })
       }
-
-      // fix: fetch user's existing reservation if connected (Cursor Rule 4)
-      if (address) {
-        await fetchUserReservation(id, address)
-      }
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
-      setError(errorMessage)
-
-    } finally {
-      setIsLoading(false)
+    } catch (error) {
+      console.error('Failed to fetch funding progress:', error)
     }
   }
 
@@ -136,7 +268,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       })
 
       if (!response.ok) {
-        // Silently fail if not authenticated or no reservations
         return
       }
 
@@ -154,8 +285,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         setExistingReservation(null)
       }
     } catch (error) {
-
       // Silently fail - user might not be authenticated
+    }
+  }
+
+  // fix: refresh data after trade success (Cursor Rule 4)
+  const handleTradeSuccess = () => {
+    if (propertyId) {
+      fetchPropertyActivity(propertyId)
+      fetchMarketData(propertyId)
     }
   }
 
@@ -166,6 +304,10 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount)
+  }
+
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed(1)}%`
   }
 
   const formatDeadline = (dateString: string) => {
@@ -185,35 +327,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   }
 
   // fix: determine if property is live for trading (Cursor Rule 4)
-  // Properties with 'funded' status (tokens deployed) or 'completed' status (USDC collected) are live for trading
   const isPropertyLive = (status: string) => {
     return status === 'completed' || status === 'funded'
-  }
-
-  // fix: fetch all token details from centralized property_token_details table (Cursor Rule 4)
-  const fetchTokenDetails = async (propertyId: string) => {
-    try {
-      if (!supabase) return
-
-      // Get all token details from property_token_details table (including orderbook address)
-      const { data: tokenData, error: tokenError } = await supabase
-        .from('property_token_details')
-        .select('*')
-        .eq('property_id', propertyId)
-        .single()
-
-      if (!tokenError && tokenData) {
-        setTokenDetails({
-          token_name: tokenData.token_name,
-          token_symbol: tokenData.token_symbol,
-          total_supply: tokenData.total_shares,
-          contract_address: tokenData.contract_address,
-          orderbook_contract_address: tokenData.orderbook_contract_address
-        })
-      }
-    } catch (error) {
-      console.error('Failed to fetch token details:', error)
-    }
   }
 
   const canReserve = () => {
@@ -224,18 +339,303 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     return true
   }
 
-  const getReservationButtonText = () => {
-    if (!isConnected) return 'Connect Wallet to Reserve'
-    if (existingReservation) return 'View Reservation'
-    if (!canReserve()) return 'Reservation Unavailable'
-    return 'Reserve Shares'
-  }
-
   const statusColors = {
     active: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
     funded: 'bg-openhouse-accent/10 text-openhouse-accent border-openhouse-accent/20',
     completed: 'bg-openhouse-fg-muted/10 text-openhouse-fg-muted border-openhouse-fg-muted/20',
     draft: 'bg-openhouse-warning/10 text-openhouse-warning border-openhouse-warning/20'
+  }
+
+  // fix: render token metadata for live properties only (Cursor Rule 4)
+  const renderTokenMetadata = () => {
+    if (!isPropertyLive(property?.status || '') || !tokenDetails) {
+      return null
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-openhouse-accent" />
+            Token Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-openhouse-fg-muted">Token Symbol</p>
+              <p className="font-semibold text-openhouse-fg">{tokenDetails.token_symbol}</p>
+            </div>
+            <div>
+              <p className="text-sm text-openhouse-fg-muted">Available Shares</p>
+              <p className="font-semibold text-openhouse-fg">
+                {availableShares !== null ? availableShares.toLocaleString() : tokenDetails.available_shares?.toLocaleString() || 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-openhouse-fg-muted">Price Per Share</p>
+              <p className="font-semibold text-openhouse-fg">
+                {formatCurrency(currentPrice || property?.price_per_token || 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+              <p className="font-semibold text-openhouse-fg">
+                {propertyFinancials?.annual_yield_pct ? formatPercentage(propertyFinancials.annual_yield_pct) : 'N/A'}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
+              <p className="font-semibold text-openhouse-fg">{tokenDetails.total_shares?.toLocaleString() || 'N/A'}</p>
+            </div>
+          </div>
+          
+          <Button 
+            onClick={() => setIsTradingModalOpen(true)}
+            className="w-full"
+            disabled={!isConnected}
+          >
+            {isConnected ? 'Trade Shares' : 'Connect Wallet to Trade'}
+          </Button>
+          
+          <div className="pt-4 border-t border-openhouse-border">
+            <p className="text-openhouse-fg-muted text-sm">
+              This property represents a tokenized real estate investment opportunity. 
+              Each token represents fractional ownership of the underlying property.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // fix: render property details tab with actual data (Cursor Rule 4)
+  const renderDetailsTab = () => {
+    if (!propertyDetails) {
+      return (
+        <div className="text-center py-8">
+          <Info className="w-12 h-12 text-openhouse-fg-muted mx-auto mb-4" />
+          <p className="text-openhouse-fg-muted">Property details not available</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Property Information</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Type</span>
+                <span className="text-openhouse-fg">{propertyDetails.property_type}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Bedrooms</span>
+                <span className="text-openhouse-fg">{propertyDetails.bedrooms}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Bathrooms</span>
+                <span className="text-openhouse-fg">{propertyDetails.bathrooms}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Square Footage</span>
+                <span className="text-openhouse-fg">{propertyDetails.square_footage?.toLocaleString()} sq ft</span>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Location</h4>
+            <div className="space-y-2">
+              <div>
+                <span className="text-openhouse-fg-muted block">Address</span>
+                <span className="text-openhouse-fg">{propertyDetails.full_address}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">City</span>
+                <span className="text-openhouse-fg">{propertyDetails.city}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {propertyDetails.ownership_model && (
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Ownership Structure</h4>
+            <p className="text-openhouse-fg-muted">{propertyDetails.ownership_model}</p>
+          </div>
+        )}
+
+        {propertyDetails.lease_information && (
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Lease Information</h4>
+            <p className="text-openhouse-fg-muted">{propertyDetails.lease_information}</p>
+          </div>
+        )}
+
+        {propertyDetails.amenities && propertyDetails.amenities.length > 0 && (
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Amenities</h4>
+            <div className="flex flex-wrap gap-2">
+              {propertyDetails.amenities.map((amenity, index) => (
+                <Badge key={index} variant="outline" className="text-openhouse-fg-muted">
+                  {amenity}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // fix: render financials tab with correct column names (Cursor Rule 4)
+  const renderFinancialsTab = () => {
+    if (!propertyFinancials) {
+      return (
+        <div className="text-center py-8">
+          <DollarSign className="w-12 h-12 text-openhouse-fg-muted mx-auto mb-4" />
+          <p className="text-openhouse-fg-muted">Financial data not available</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Property Value</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Property Value</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.property_value)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Price Per Share</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.price_per_share)}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Income & Returns</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Monthly Income</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.monthly_income)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Annual Yield</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_yield_pct)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Annual Return</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_return)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Performance Metrics</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Cap Rate</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cap_rate)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">ROI</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.roi)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Cash on Cash</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cash_on_cash)}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-openhouse-fg mb-3">Operating Details</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Net Operating Income</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.net_operating_income)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Expense Ratio</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.expense_ratio * 100)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-openhouse-fg-muted">Vacancy Rate</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.vacancy_rate * 100)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // fix: render activity tab with BaseScan links (Cursor Rule 4)
+  const renderActivityTab = () => {
+    if (propertyActivity.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <Activity className="w-12 h-12 text-openhouse-fg-muted mx-auto mb-4" />
+          <p className="text-openhouse-fg-muted">No trading activity yet</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {propertyActivity.map((activity) => (
+          <div key={activity.id} className="flex items-center justify-between p-4 border border-openhouse-border rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${
+                activity.activity_type === 'buy_order' ? 'bg-openhouse-success' :
+                activity.activity_type === 'sell_order' ? 'bg-openhouse-warning' :
+                activity.activity_type === 'trade_executed' ? 'bg-openhouse-accent' :
+                'bg-openhouse-fg-muted'
+              }`} />
+              <div>
+                <p className="font-medium text-openhouse-fg">
+                  {activity.activity_type === 'buy_order' && 'Buy Order Placed'}
+                  {activity.activity_type === 'sell_order' && 'Sell Order Placed'}
+                  {activity.activity_type === 'trade_executed' && 'Trade Executed'}
+                  {activity.activity_type === 'yield_distributed' && 'Yield Distributed'}
+                </p>
+                <p className="text-sm text-openhouse-fg-muted">
+                  {activity.share_count && `${activity.share_count} shares`}
+                  {activity.price_per_share && ` @ ${formatCurrency(activity.price_per_share)}`}
+                  {activity.total_amount && ` • Total: ${formatCurrency(activity.total_amount)}`}
+                </p>
+                <p className="text-xs text-openhouse-fg-muted">
+                  {activity.wallet_address.slice(0, 6)}...{activity.wallet_address.slice(-4)}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-openhouse-fg-muted">
+                {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+              </p>
+              {activity.transaction_hash && (
+                <Link
+                  href={`https://basescan.org/tx/${activity.transaction_hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-openhouse-accent hover:underline"
+                >
+                  View on BaseScan
+                </Link>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   if (isLoading) {
@@ -261,60 +661,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     )
   }
 
-  if (error) {
+  if (error || !property) {
     return (
-      <div className="min-h-screen bg-openhouse-bg">
-        <div className="container mx-auto px-4 py-8">
-          <Link 
-            href="/"
-            className="inline-flex items-center gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors mb-8"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Properties
+      <div className="min-h-screen bg-openhouse-bg flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-openhouse-fg mb-4">Property Not Found</h1>
+          <p className="text-openhouse-fg-muted mb-8">{error || 'The requested property could not be found.'}</p>
+          <Link href="/" className="text-openhouse-accent hover:underline">
+            Return to Properties
           </Link>
-          
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-openhouse-danger/10 flex items-center justify-center mb-4">
-              <Building2 className="w-8 h-8 text-openhouse-danger" />
-            </div>
-            <h3 className="font-heading text-lg font-semibold text-openhouse-fg mb-2">
-              Error Loading Property
-            </h3>
-            <p className="text-openhouse-fg-muted max-w-md mb-4">
-              {error}
-            </p>
-            <Button onClick={() => fetchPropertyDetails(propertyId)}>
-              Try Again
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!property) {
-    return (
-      <div className="min-h-screen bg-openhouse-bg">
-        <div className="container mx-auto px-4 py-8">
-          <Link 
-            href="/"
-            className="inline-flex items-center gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors mb-8"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Properties
-          </Link>
-          
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-openhouse-fg-muted/10 flex items-center justify-center mb-4">
-              <Building2 className="w-8 h-8 text-openhouse-fg-muted" />
-            </div>
-            <h3 className="font-heading text-lg font-semibold text-openhouse-fg mb-2">
-              Property Not Found
-            </h3>
-            <p className="text-openhouse-fg-muted">
-              The property you&apos;re looking for doesn&apos;t exist or has been removed.
-            </p>
-          </div>
         </div>
       </div>
     )
@@ -323,300 +678,216 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   return (
     <div className="min-h-screen bg-openhouse-bg">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Property Image */}
-              <Card>
-                <CardContent className="pt-8 px-20">
-                  <div className="aspect-[1/1] relative overflow-hidden rounded-sm h-full">
-                    {property.image_url ? (
-                      <Image
-                        src={property.image_url}
-                        alt={property.name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 1024px) 100vw, 66vw"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
-                        <div className="w-24 h-24 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
-                          <Building2 className="w-12 h-12 text-openhouse-accent" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          {/* Main Content */}
+        <Link 
+          href="/"
+          className="inline-flex items-center gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Properties
+        </Link>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Property Image */}
+            <Card>
+              <CardContent className="pt-8 px-20">
+                <div className="aspect-[1/1] relative overflow-hidden rounded-sm h-full">
+                  {property.image_url ? (
+                    <Image
+                      src={property.image_url}
+                      alt={property.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 1024px) 100vw, 66vw"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
+                      <div className="w-24 h-24 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
+                        <Building2 className="w-12 h-12 text-openhouse-accent" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabbed Content */}
+            <Card>
+              <CardHeader>
+                <div className="flex space-x-1 bg-openhouse-bg-muted rounded-lg p-1">
+                  {(['details', 'financials', 'activity'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === tab
+                          ? 'bg-openhouse-bg text-openhouse-fg shadow-sm'
+                          : 'text-openhouse-fg-muted hover:text-openhouse-fg'
+                      }`}
+                    >
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {activeTab === 'details' && renderDetailsTab()}
+                {activeTab === 'financials' && renderFinancialsTab()}
+                {activeTab === 'activity' && renderActivityTab()}
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Sidebar */}
-            <div className="lg:col-span-1 space-y-6 pl-8">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    {/* fix: make property name clickable for live properties to show token info (Cursor Rule 4) */}
-                    {isPropertyLive(property.status) ? (
-                      <button
-                        onClick={() => setIsTokenInfoModalOpen(true)}
-                        className="font-heading text-2xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
-                      >
-                        {property.name}
-                      </button>
-                    ) : (
-                      <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
-                        {property.name}
-                      </h1>
-                    )}
-                  </div>
-                  <Badge className={statusColors[property.status]} variant="outline">
-                    {property.status}
-                  </Badge>
+          <div className="lg:col-span-1 space-y-6">
+            {/* Property Header */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {isPropertyLive(property.status) ? (
+                    <button
+                      onClick={() => setIsTokenInfoModalOpen(true)}
+                      className="font-heading text-2xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
+                    >
+                      {property.name}
+                    </button>
+                  ) : (
+                    <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
+                      {property.name}
+                    </h1>
+                  )}
                 </div>
+                <Badge className={statusColors[property.status]} variant="outline">
+                  {property.status}
+                </Badge>
               </div>
+            </div>
 
-              {/* Property Details */}
+            {/* Token Metadata (Live Properties Only) */}
+            {renderTokenMetadata()}
+
+            {/* Basic Property Details (Non-Live Properties) */}
+            {!isPropertyLive(property.status) && (
               <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-openhouse-accent" />
+                    Investment Details
+                  </CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
-                      <p className="font-semibold text-openhouse-fg">
-                        {property.total_shares.toLocaleString()}
-                      </p>
+                      <p className="font-semibold text-openhouse-fg">{property.total_shares.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-openhouse-fg-muted">Price per Share</p>
-                      <p className="font-semibold text-openhouse-fg">
-                        {formatCurrency(property.price_per_token)}
-                      </p>
+                      <p className="text-sm text-openhouse-fg-muted">Price Per Share</p>
+                      <p className="font-semibold text-openhouse-fg">{formatCurrency(property.price_per_token)}</p>
                     </div>
                   </div>
                   
-                  <div className="pt-4 border-t border-openhouse-border">
-                    <p className="text-openhouse-fg-muted">
-                      This property represents a tokenized real estate investment opportunity. 
-                      Each token represents fractional ownership of the underlying property.
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-openhouse-fg-muted">Funding Progress</span>
+                      <span className="text-sm font-medium text-openhouse-fg">
+                        {formatCurrency(fundingProgress.raised_amount)} / {formatCurrency(property.funding_goal_usdc)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-openhouse-bg-muted rounded-full h-2">
+                      <div 
+                        className="bg-openhouse-accent h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-openhouse-fg-muted mt-1">
+                      {fundingProgress.progress_percentage.toFixed(1)}% funded
                     </p>
                   </div>
-                </CardContent>
-              </Card> 
-              
-              {/* Trading Interface for Live Properties or Reserve Button for Active Properties */}
-              <Card>
-                <CardContent className="pt-0">
-                  {isPropertyLive(property.status) ? (
-                    <div className="space-y-3">
-                      <Button 
-                        onClick={() => setIsTradingModalOpen(true)}
-                        className="w-full bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
-                        size="lg"
-                        disabled={!tokenDetails}
-                      >
-                        <TrendingUp className="w-4 h-4 mr-2" />
-                        {tokenDetails ? 'Trade Shares' : 'Loading Token Info...'}
-                      </Button>
-                      <p className="text-xs text-openhouse-fg-muted text-center">
-                        {tokenDetails ? 'Buy and sell shares on the secondary market' : 'Fetching trading details'}
-                      </p>
-                    </div>
-                  ) : !isConnected ? (
-                    <div className="text-center space-y-3">
-                      <p className="text-sm text-openhouse-fg-muted">
-                        Connect your wallet to reserve shares
-                      </p>
-                      <Button disabled className="w-full">
-                        Connect Wallet First
-                      </Button>
-                    </div>
-                  ) : existingReservation ? (
-                    <div className="space-y-3">
-                      <Button 
-                        onClick={() => setIsReservationModalOpen(true)}
-                        className="w-full bg-openhouse-success hover:bg-openhouse-success/90 text-white"
-                        size="lg"
-                      >
-                        View Reservation
-                      </Button>
-                      <p className="text-xs text-openhouse-success text-center font-medium">
-                        ✓ You have reserved {existingReservation.token_amount} shares
-                      </p>
-                    </div>
-                  ) : canReserve() ? (
-                    <div className="space-y-3">
-                      <Button 
-                        onClick={() => setIsReservationModalOpen(true)}
-                        className="w-full bg-openhouse-accent hover:bg-openhouse-accent/90 text-openhouse-accent-fg"
-                        size="lg"
-                      >
-                        Reserve Shares
-                      </Button>
-                      <p className="text-xs text-openhouse-fg-muted text-center">
-                        Reserve now, pay when funding goal is reached
-                      </p>
-                    </div>
+
+                  <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
+                    <Clock className="w-4 h-4" />
+                    <span>Deadline: {formatDeadline(property.funding_deadline)}</span>
+                  </div>
+
+                  {canReserve() ? (
+                    <Button 
+                      onClick={() => setIsReservationModalOpen(true)}
+                      className="w-full"
+                      disabled={!isConnected}
+                    >
+                      {isConnected ? 'Reserve Shares' : 'Connect Wallet to Reserve'}
+                    </Button>
                   ) : (
-                    <div className="text-center space-y-3">
-                      <p className="text-sm text-openhouse-fg-muted">
-                        {isDeadlinePassed(property.funding_deadline) 
-                          ? 'Funding deadline has passed'
-                          : property.status !== 'active'
-                          ? 'Property is not accepting reservations'
-                          : 'Funding goal reached'
-                        }
+                    <Button disabled className="w-full">
+                      {property.status !== 'active' ? 'Funding Closed' :
+                       fundingProgress.progress_percentage >= 100 ? 'Fully Funded' :
+                       isDeadlinePassed(property.funding_deadline) ? 'Deadline Passed' :
+                       'Connect Wallet'}
+                    </Button>
+                  )}
+
+                  {existingReservation && (
+                    <div className="p-3 bg-openhouse-accent/10 rounded-lg border border-openhouse-accent/20">
+                      <p className="text-sm font-medium text-openhouse-accent mb-1">Your Reservation</p>
+                      <p className="text-xs text-openhouse-fg-muted">
+                        {existingReservation.token_amount} shares • {formatCurrency(existingReservation.usdc_amount)}
                       </p>
-                      <Button disabled className="w-full">
-                        Reservations Closed
-                      </Button>
+                      <p className="text-xs text-openhouse-fg-muted">
+                        Status: {existingReservation.payment_status}
+                      </p>
                     </div>
                   )}
                 </CardContent>
               </Card>
-
-              {/* Market Information for Live Properties or Funding Progress for Active Properties */}
-              {isPropertyLive(property.status) ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5" />
-                      Market Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <p className="text-3xl font-bold text-openhouse-fg">
-                        {formatCurrency(property.price_per_token)}
-                      </p>
-                      <p className="text-sm text-openhouse-fg-muted">last price</p>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {tokenDetails ? (
-                        <>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-openhouse-fg-muted">Total Supply</span>
-                            <span className="font-medium text-openhouse-fg">
-                              {tokenDetails.total_supply.toLocaleString()} tokens
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-openhouse-fg-muted">Token Symbol</span>
-                            <span className="font-medium text-openhouse-fg font-mono">
-                              {tokenDetails.token_symbol}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-openhouse-fg-muted">Trading Status</span>
-                            <Badge variant="outline" className="text-xs bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20">
-                              Live
-                            </Badge>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-center py-4">
-                          <div className="animate-pulse">
-                            <div className="h-4 bg-openhouse-bg-muted rounded mb-2"></div>
-                            <div className="h-4 bg-openhouse-bg-muted rounded w-3/4 mx-auto"></div>
-                          </div>
-                          <p className="text-sm text-openhouse-fg-muted mt-2">Loading token details...</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <p className="text-3xl font-bold text-openhouse-fg">
-                        {fundingProgress.progress_percentage}%
-                      </p>
-                      <p className="text-sm text-openhouse-fg-muted">funded</p>
-                    </div>
-                    
-                    <div className="w-full bg-openhouse-bg-muted rounded-full h-3">
-                      <div 
-                        className="bg-openhouse-success h-3 rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-openhouse-fg-muted">Raised</span>
-                        <span className="font-medium text-openhouse-fg">
-                          {formatCurrency(fundingProgress.raised_amount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-openhouse-fg-muted">Goal</span>
-                        <span className="font-medium text-openhouse-fg">
-                          {formatCurrency(property.funding_goal_usdc)}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Reservation Modal */}
-      {property && !isPropertyLive(property.status) && (
-        <ReservationModal
-          isOpen={isReservationModalOpen}
-          onClose={() => setIsReservationModalOpen(false)}
-          property={property}
-          fundingProgress={fundingProgress}
-          existingReservation={existingReservation}
-          onReservationSuccess={() => {
-            setIsReservationModalOpen(false)
-            fetchPropertyDetails(propertyId) // Refresh property data
-            if (address) {
-              fetchUserReservation(propertyId, address) // Refresh user reservation
-            }
-          }}
-        />
-      )}
+      {/* Modals */}
+      <ReservationModal
+        isOpen={isReservationModalOpen}
+        onClose={() => setIsReservationModalOpen(false)}
+        property={property}
+        fundingProgress={fundingProgress}
+        existingReservation={existingReservation}
+        onReservationSuccess={() => {
+          fetchUserReservation(propertyId, address || '')
+          fetchFundingProgress(propertyId, property.funding_goal_usdc)
+        }}
+      />
 
-      {/* Token Information Modal */}
-      {property && isPropertyLive(property.status) && (
-        <TokenInformationModal
-          isOpen={isTokenInfoModalOpen}
-          onClose={() => setIsTokenInfoModalOpen(false)}
-          property={{
-            id: property.id,
-            name: property.name,
-            status: property.status,
-            total_shares: property.total_shares,
-            price_per_token: property.price_per_token,
-            token_contract_address: tokenDetails?.contract_address
-          }}
-          tokenDetails={tokenDetails || undefined}
-        />
-      )}
+      <TokenInformationModal
+        isOpen={isTokenInfoModalOpen}
+        onClose={() => setIsTokenInfoModalOpen(false)}
+        property={{
+          id: property.id,
+          name: property.name,
+          status: property.status,
+          total_shares: property.total_shares,
+          price_per_token: property.price_per_token,
+          token_contract_address: tokenDetails?.contract_address
+        }}
+        tokenDetails={tokenDetails ? {
+          token_name: tokenDetails.token_name,
+          token_symbol: tokenDetails.token_symbol,
+          total_supply: tokenDetails.total_shares,
+          contract_address: tokenDetails.contract_address
+        } : undefined}
+      />
 
-      {/* Trading Modal */}
-      {property && isPropertyLive(property.status) && tokenDetails && (
-        <TradingModal
-          isOpen={isTradingModalOpen}
-          onClose={() => setIsTradingModalOpen(false)}
-          property={{
-            ...property,
-            contract_address: tokenDetails.contract_address,
-            orderbook_contract_address: tokenDetails.orderbook_contract_address
-          }}
-          onTradeSuccess={() => {
-            setIsTradingModalOpen(false)
-            fetchPropertyDetails(propertyId) // Refresh property data
-          }}
-        />
-      )}
+      <TradingModal
+        isOpen={isTradingModalOpen}
+        onClose={() => setIsTradingModalOpen(false)}
+        property={{
+          ...property,
+          contract_address: tokenDetails?.contract_address,
+          orderbook_contract_address: tokenDetails?.orderbook_contract_address
+        }}
+        onTradeSuccess={handleTradeSuccess}
+      />
     </div>
   )
 } 

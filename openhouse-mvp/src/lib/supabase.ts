@@ -43,12 +43,67 @@ export interface PropertyTokenDetails {
   id: string
   property_id: string
   contract_address: string
+  token_name: string
+  token_symbol: string
+  total_shares: number
+  available_shares?: number
   orderbook_contract_address?: string
   yield_distributor_address?: string
   total_supply: number
   price_source: 'openhouse' | 'last_trade'
   created_at: string
   updated_at: string
+}
+
+// fix: property details table for property page tabs (Cursor Rule 4)
+export interface PropertyDetails {
+  id: string
+  property_id: string
+  property_type: string
+  bedrooms: number
+  bathrooms: number
+  square_footage: number
+  full_address: string
+  postcode: string
+  city: string
+  ownership_model: string
+  lease_information?: string
+  amenities?: string[]
+  developer_info?: string
+  created_at: string
+  updated_at: string
+}
+
+// fix: property financials table for property page tabs (Cursor Rule 4)
+export interface PropertyFinancials {
+  property_id: string
+  price_per_share: number
+  monthly_income: number
+  annual_return: number
+  property_value: number
+  cash_on_cash: number
+  cap_rate: number
+  roi: number
+  gross_rent_multiplier: number
+  net_operating_income: number
+  expense_ratio: number
+  vacancy_rate: number
+  break_even_ratio: number
+  annual_yield_pct: number
+}
+
+// fix: property activity table for property page tabs (Cursor Rule 4)
+export interface PropertyActivity {
+  id: string
+  property_id: string
+  activity_type: 'buy_order' | 'sell_order' | 'trade_executed' | 'yield_distributed'
+  wallet_address: string
+  share_count?: number
+  price_per_share?: number
+  total_amount?: number
+  transaction_hash?: string
+  block_number?: number
+  created_at: string
 }
 
 // fix: admin settings type for secure configuration (Cursor Rule 3)
