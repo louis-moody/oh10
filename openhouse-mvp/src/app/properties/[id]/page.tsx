@@ -696,13 +696,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   return (
     <div className="min-h-screen bg-openhouse-bg">
       <div className="container mx-auto px-4 py-8">
-        <Link 
-          href="/"
-          className="inline-flex items-center gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Properties
-        </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content - Property Image Only */}

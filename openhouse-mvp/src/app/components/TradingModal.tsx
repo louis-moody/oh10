@@ -254,6 +254,8 @@ export function TradingModal({
     console.log('✅ TRADING MODAL: Validation passed, setting executing state')
     setFlowState('executing')
     setError('')
+    // fix: reset transaction step so final transaction can be processed (Cursor Rule 7)
+    setTransactionStep('idle')
 
     try {
       const ethers = await import('ethers')
@@ -368,35 +370,47 @@ export function TradingModal({
       hasRecorded,
       transactionStep,
       activeTab,
-      hash: hash?.slice(0, 10) + '...'
+      hash: hash?.slice(0, 10) + '...',
+      isOpen,
+      flowState
     })
 
-    if (isConfirmed && !hasRecorded) {
-      console.log('✅ TRADING MODAL: Transaction confirmed - starting processing')
-      
-      // fix: handle approval step vs final trade (Cursor Rule 7)
-      if (transactionStep === 'approving' && activeTab === 'sell') {
-        console.log('✅ TRADING MODAL: Approval confirmed! Now creating sell order...')
-        setTransactionStep('trading')
-        // Automatically proceed to sell order
-        setTimeout(() => {
-          executeTrade()
-        }, 1000)
-      } else {
-        console.log('✅ TRADING MODAL: Final transaction confirmed - recording activity')
-        // fix: prevent multiple calls with flag (Cursor Rule 6)
-        setHasRecorded(true)
-        recordTradeActivity()
-        
-        setFlowState('success')
-        setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
-        setTransactionStep('idle')
-        
-        // fix: let user manually close and refresh page (Cursor Rule 7)
-        // onTradeSuccess() will be called when user clicks Close button
-      }
+    // fix: prevent processing when modal is closed or in invalid state (Cursor Rule 7)
+    if (!isOpen || !hash || !isConfirmed || hasRecorded || flowState === 'success') {
+      console.log('🔄 TRADING MODAL: Skipping transaction processing - invalid state')
+      return
     }
-  }, [isConfirmed, hasRecorded, transactionStep, activeTab, hash])
+
+    console.log('✅ TRADING MODAL: Transaction confirmed - starting processing')
+    
+    // fix: handle approval step vs final trade (Cursor Rule 7)
+    if (transactionStep === 'approving' && activeTab === 'sell') {
+      console.log('✅ TRADING MODAL: Approval confirmed! Now creating sell order...')
+      // fix: mark approval as processed and change step to prevent re-processing (Cursor Rule 7)
+      setHasRecorded(true)
+      setTransactionStep('trading')
+      // fix: DO NOT show success state yet - wait for final transaction (Cursor Rule 7)
+      // Automatically proceed to sell order
+      setTimeout(() => {
+        executeTrade()
+      }, 1000)
+    } else if (transactionStep === 'idle' && (activeTab === 'buy' || activeTab === 'sell')) {
+      console.log('✅ TRADING MODAL: Final transaction confirmed - recording activity')
+      // fix: prevent multiple calls with flag (Cursor Rule 6)
+      setHasRecorded(true)
+      recordTradeActivity()
+      
+      // fix: ONLY show success state for final transaction (Cursor Rule 7)
+      setFlowState('success')
+      setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
+      setTransactionStep('idle')
+      
+      // fix: let user manually close and refresh page (Cursor Rule 7)
+      // onTradeSuccess() will be called when user clicks Close button
+    } else {
+      console.log('🔄 TRADING MODAL: Ignoring transaction confirmation - wrong step or state')
+    }
+  }, [isConfirmed, hasRecorded, transactionStep, activeTab, hash, isOpen, flowState])
 
   // fix: record orderbook transaction with comprehensive auth debugging (Cursor Rule 4)
   const recordTradeActivity = async () => {
@@ -538,6 +552,7 @@ export function TradingModal({
       setSuccessMessage(null)
       setHasRecorded(false) // Reset recording flag
       setTransactionStep('idle')
+      // fix: transaction hash will be cleared automatically by wagmi when modal reopens
     }
   }, [isOpen])
 
@@ -572,7 +587,11 @@ export function TradingModal({
         {/* Trade Type Tabs */}
         <div className="flex space-x-1 rounded-lg bg-gray-100 p-1">
           <button
-            onClick={() => setActiveTab('buy')}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault() // fix: prevent any default form submission behavior
+              setActiveTab('buy')
+            }}
             className={`flex-1 rounded-md py-2 px-3 text-sm font-medium transition-colors ${
               activeTab === 'buy'
                 ? 'bg-white text-green-700 shadow-sm'
@@ -583,7 +602,11 @@ export function TradingModal({
             Buy Tokens
           </button>
           <button
-            onClick={() => setActiveTab('sell')}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault() // fix: prevent any default form submission behavior
+              setActiveTab('sell')
+            }}
             className={`flex-1 rounded-md py-2 px-3 text-sm font-medium transition-colors ${
               activeTab === 'sell'
                 ? 'bg-white text-red-700 shadow-sm'
@@ -694,7 +717,9 @@ export function TradingModal({
 
                 {/* fix: SIMPLE ONE BUTTON - wallet handles approval automatically (Cursor Rule 7) */}
                 <Button
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault() // fix: prevent any default form submission behavior
                     console.log('🔴 TRADING MODAL: BUTTON CLICKED!', {
                       activeTab,
                       transactionStep,
@@ -750,20 +775,33 @@ export function TradingModal({
             <p className="text-gray-600 mb-4">{successMessage}</p>
             <div className="flex gap-3 justify-center">
               <Button 
-                onClick={() => {
-                  onTradeSuccess() // Refresh data
-                  onClose() // Close modal
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault() // fix: prevent any default form submission behavior
+                  // Reset to input state for another trade
+                  setFlowState('input')
+                  setError(null)
+                  setSuccessMessage(null)
+                  setHasRecorded(false)
+                  setTransactionStep('idle')
+                  setUsdcAmount('')
+                  setShareAmount('')
                 }}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
-                Update & Close
+                Trade More
               </Button>
               <Button 
-                onClick={onClose}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault() // fix: prevent any default form submission behavior
+                  onTradeSuccess() // Refresh data
+                  onClose() // Close modal
+                }}
                 variant="outline"
                 className="text-gray-600 border-gray-300"
               >
-                Close Only
+                Close
               </Button>
             </div>
           </div>
@@ -775,7 +813,9 @@ export function TradingModal({
             <h3 className="text-lg font-medium text-gray-900 mb-2">Transaction Failed</h3>
             <p className="text-gray-600 mb-4">{error}</p>
             <Button 
-              onClick={() => {
+              type="button"
+              onClick={(e) => {
+                e.preventDefault() // fix: prevent any default form submission behavior
                 setFlowState('input')
                 setError(null)
                 setTransactionStep('idle')
