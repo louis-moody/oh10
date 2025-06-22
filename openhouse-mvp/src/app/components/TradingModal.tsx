@@ -392,10 +392,8 @@ export function TradingModal({
         setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
         setTransactionStep('idle')
         
-        setTimeout(() => {
-          onTradeSuccess()
-          onClose()
-        }, 8000)
+        // fix: let user manually close and refresh page (Cursor Rule 7)
+        // onTradeSuccess() will be called when user clicks Close button
       }
     }
   }, [isConfirmed, hasRecorded, transactionStep, activeTab, hash])
@@ -750,9 +748,24 @@ export function TradingModal({
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Transaction Successful!</h3>
             <p className="text-gray-600 mb-4">{successMessage}</p>
-            <Button onClick={onClose} className="bg-green-600 hover:bg-green-700 text-white">
-              Close
-            </Button>
+            <div className="flex gap-3 justify-center">
+              <Button 
+                onClick={() => {
+                  onTradeSuccess() // Refresh data
+                  onClose() // Close modal
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                Update & Close
+              </Button>
+              <Button 
+                onClick={onClose}
+                variant="outline"
+                className="text-gray-600 border-gray-300"
+              >
+                Close Only
+              </Button>
+            </div>
           </div>
         )}
 

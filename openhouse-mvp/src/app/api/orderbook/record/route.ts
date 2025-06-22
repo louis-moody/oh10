@@ -90,25 +90,37 @@ export async function POST(req: NextRequest) {
 
     console.log('✅ Order recorded successfully:', orderRecord.id)
 
-    // fix: also record in property_activity for transparency (Cursor Rule 4)
-    const activityData = {
-      property_id,
-      activity_type: order_type === 'buy' ? 'buy_order' : 'sell_order',
-      wallet_address: user_address.toLowerCase(),
-      share_count: Math.round(parseFloat(shares)),
-      price_per_share: parseFloat(price_per_share),
-      total_amount: parseFloat(shares) * parseFloat(price_per_share),
-      transaction_hash: transaction_hash.toLowerCase(),
-      created_at: new Date().toISOString()
-    }
+    // fix: record in property_activity - simplified approach (Cursor Rule 4)
+    try {
+      console.log('🔄 Attempting to record activity for order:', orderRecord.id)
 
-    const { error: activityError } = await supabaseAdmin
-      .from('property_activity')
-      .insert(activityData)
+      const { data: activityRecord, error: activityError } = await supabaseAdmin
+        .from('property_activity')
+        .insert({
+          property_id,
+          activity_type: order_type === 'buy' ? 'buy_order' : 'sell_order',
+          wallet_address: user_address.toLowerCase(),
+          share_count: Math.round(parseFloat(shares)),
+          price_per_share: parseFloat(price_per_share),
+          total_amount: parseFloat(shares) * parseFloat(price_per_share),
+          transaction_hash: transaction_hash.toLowerCase()
+        })
+        .select('id')
+        .single()
 
-    if (activityError) {
-      console.error('Failed to record activity:', activityError)
-      // Don't fail the request for activity recording
+      if (activityError) {
+        console.error('❌ Activity recording failed:', activityError)
+        console.error('❌ Activity error details:', {
+          message: activityError.message,
+          details: activityError.details,
+          hint: activityError.hint,
+          code: activityError.code
+        })
+      } else {
+        console.log('✅ Activity recorded successfully with ID:', activityRecord.id)
+      }
+    } catch (activityErr) {
+      console.error('❌ Activity recording exception:', activityErr)
     }
 
     return NextResponse.json({

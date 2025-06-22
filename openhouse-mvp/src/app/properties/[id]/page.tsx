@@ -134,10 +134,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       if (!tokenError && tokenData) {
         setTokenDetails(tokenData)
         
-        // fix: fetch live market data for trading properties (Cursor Rule 4)
-        if (isPropertyLive(property?.status || '')) {
-          await fetchMarketData(propertyId)
-        }
+        // fix: always fetch market data for completed properties (Cursor Rule 4)
+        await fetchMarketData(propertyId)
       }
     } catch (error) {
       console.error('Failed to fetch token details:', error)
@@ -147,62 +145,38 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   // fix: fetch real market data from order_book table (Cursor Rule 4)
   const fetchMarketData = async (propertyId: string) => {
     try {
-      if (!supabase) return
-
-      // fix: get available shares for purchase from active sell orders (Cursor Rule 4)
-      const { data: sellOrders } = await supabase
-        .from('order_book')
-        .select('shares_remaining, price_per_share')
-        .eq('property_id', propertyId)
-        .eq('order_type', 'sell')
-        .eq('status', 'open')
-        .gt('shares_remaining', 0)
-        .order('price_per_share', { ascending: true })
-
-      if (sellOrders && sellOrders.length > 0) {
-        const totalAvailable = sellOrders.reduce((sum, order) => sum + order.shares_remaining, 0)
-        setAvailableShares(totalAvailable)
-        
-        // Best ask (lowest sell price)
-        const bestAskPrice = sellOrders[0].price_per_share
-        setBestAsk(bestAskPrice)
-        setCurrentPrice(bestAskPrice)
-      } else {
-        setAvailableShares(0)
-        setBestAsk(null)
+      // fix: use market data API for real orderbook data (Cursor Rule 4)
+      const response = await fetch(`/api/orderbook/market-data?property_id=${propertyId}`)
+      
+      if (!response.ok) {
+        console.error('Failed to fetch market data:', response.status)
+        return
       }
 
-      // fix: get best bid (highest buy price) from active buy orders (Cursor Rule 4)
-      const { data: buyOrders } = await supabase
-        .from('order_book')
-        .select('price_per_share')
-        .eq('property_id', propertyId)
-        .eq('order_type', 'buy')
-        .eq('status', 'open')
-        .gt('shares_remaining', 0)
-        .order('price_per_share', { ascending: false })
-        .limit(1)
-
-      if (buyOrders && buyOrders.length > 0) {
-        setBestBid(buyOrders[0].price_per_share)
-      } else {
-        setBestBid(null)
-      }
-
-      // fix: set orderbook depth (Cursor Rule 4)
+      const marketData = await response.json()
+      
+      // fix: force state update with explicit values (Cursor Rule 7)
+      const sharesValue = marketData.available_shares ?? 0
+      const askValue = marketData.best_ask ?? null
+      const bidValue = marketData.best_bid ?? null
+      
+      console.log('🔄 Setting state values:', {
+        availableShares: sharesValue,
+        bestAsk: askValue,
+        bestBid: bidValue,
+        orderDepth: marketData.order_depth
+      })
+      
+      setAvailableShares(sharesValue)
+      setBestAsk(askValue)
+      setBestBid(bidValue)
+      setCurrentPrice(askValue || property?.price_per_token || 0)
       setOrderBookDepth({
-        sellOrders: sellOrders?.length || 0,
-        buyOrders: buyOrders?.length || 0
+        sellOrders: marketData.order_depth?.sell_orders || 0,
+        buyOrders: marketData.order_depth?.buy_orders || 0
       })
 
-      // Log market depth for transparency
-      console.log('📊 Real market data for property:', propertyId, {
-        availableShares: sellOrders?.reduce((sum, order) => sum + order.shares_remaining, 0) || 0,
-        bestAsk: sellOrders?.[0]?.price_per_share || null,
-        bestBid: buyOrders?.[0]?.price_per_share || null,
-        activeSellOrders: sellOrders?.length || 0,
-        activeBuyOrders: buyOrders?.length || 0
-      })
+      console.log('✅ State update completed for property:', propertyId)
       
     } catch (error) {
       console.error('Failed to fetch market data:', error)
@@ -259,8 +233,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         .order('created_at', { ascending: false })
         .limit(50)
 
+      console.log('📊 Property activity fetch result:', { 
+        propertyId, 
+        count: data?.length || 0, 
+        data, 
+        error 
+      })
+
       if (!error && data) {
         setPropertyActivity(data)
+        console.log('✅ Property activity state updated with', data.length, 'records')
       }
     } catch (error) {
       console.error('Failed to fetch property activity:', error)
@@ -395,15 +377,19 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     return (
       <Card>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 bg-openhouse-bg-muted rounded-lg">
             <div>
-              <p className="text-sm text-openhouse-fg-muted">Available Shares</p>
+              <p className="text-sm text-openhouse-fg-muted">Available</p>
               <p className="font-semibold text-openhouse-fg">
-                {availableShares !== null ? availableShares.toLocaleString() : tokenDetails.available_shares?.toLocaleString() || 'N/A'}
+                {availableShares !== null ? availableShares.toLocaleString() : tokenDetails?.available_shares?.toLocaleString() || 'N/A'}
+              </p>
+              {/* Temporary debug info */}
+              <p className="text-xs text-red-500">
+                Debug: availableShares={availableShares}, tokenDetails.available_shares={tokenDetails?.available_shares}
               </p>
             </div>
             <div>
-              <p className="text-sm text-openhouse-fg-muted">Price Per Share</p>
+              <p className="text-sm text-openhouse-fg-muted">Price</p>
               <p className="font-semibold text-openhouse-fg">
                 {formatCurrency(currentPrice || property?.price_per_token || 0)}
               </p>
@@ -413,10 +399,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <p className="font-semibold text-openhouse-fg">
                 {propertyFinancials?.annual_yield_pct ? formatPercentage(propertyFinancials.annual_yield_pct) : 'N/A'}
               </p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
-              <p className="font-semibold text-openhouse-fg">{tokenDetails.total_shares?.toLocaleString() || 'N/A'}</p>
             </div>
           </div>
           
