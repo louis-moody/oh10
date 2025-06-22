@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       .eq('status', 'open')
       .gt('shares_remaining', 0)
       .order('price_per_share', { ascending: true })
-      .limit(10) // Top 10 asks
+      .limit(50) // Top 50 asks
 
     // fix: fetch active buy orders (bids) sorted by price (Cursor Rule 4)  
     const { data: buyOrders } = await supabaseAdmin
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       .eq('status', 'open')
       .gt('shares_remaining', 0)
       .order('price_per_share', { ascending: false })
-      .limit(10) // Top 10 bids
+      .limit(50) // Top 50 bids
 
     // fix: calculate market metrics (Cursor Rule 4)
     const bestAsk = sellOrders?.[0]?.price_per_share || null
