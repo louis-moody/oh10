@@ -90,38 +90,8 @@ export async function POST(req: NextRequest) {
 
     console.log('✅ Order recorded successfully:', orderRecord.id)
 
-    // fix: record in property_activity - simplified approach (Cursor Rule 4)
-    try {
-      console.log('🔄 Attempting to record activity for order:', orderRecord.id)
-
-      const { data: activityRecord, error: activityError } = await supabaseAdmin
-        .from('property_activity')
-        .insert({
-          property_id,
-          activity_type: order_type === 'buy' ? 'buy_order' : 'sell_order',
-          wallet_address: user_address.toLowerCase(),
-          share_count: Math.round(parseFloat(shares)),
-          price_per_share: parseFloat(price_per_share),
-          total_amount: parseFloat(shares) * parseFloat(price_per_share),
-          transaction_hash: transaction_hash.toLowerCase()
-        })
-        .select('id')
-        .single()
-
-      if (activityError) {
-        console.error('❌ Activity recording failed:', activityError)
-        console.error('❌ Activity error details:', {
-          message: activityError.message,
-          details: activityError.details,
-          hint: activityError.hint,
-          code: activityError.code
-        })
-      } else {
-        console.log('✅ Activity recorded successfully with ID:', activityRecord.id)
-      }
-    } catch (activityErr) {
-      console.error('❌ Activity recording exception:', activityErr)
-    }
+    // fix: activity recording removed - using order_book table as source of truth (Cursor Rule 4)
+    console.log('✅ Order recorded in order_book table - activity will be shown from there')
 
     return NextResponse.json({
       success: true,

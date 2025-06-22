@@ -221,19 +221,19 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
   }
 
-  // fix: fetch property activity from property_activity table only (Cursor Rule 4)
+  // fix: fetch property activity from order_book table (property_activity is broken) (Cursor Rule 4)
   const fetchPropertyActivity = async (propertyId: string) => {
     try {
       if (!supabase) return
 
       const { data, error } = await supabase
-        .from('property_activity')
+        .from('order_book')
         .select('*')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: false })
         .limit(50)
 
-      console.log('📊 Property activity fetch result:', { 
+      console.log('📊 Property activity fetch result from order_book:', { 
         propertyId, 
         count: data?.length || 0, 
         data, 
@@ -241,8 +241,21 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       })
 
       if (!error && data) {
-        setPropertyActivity(data)
-        console.log('✅ Property activity state updated with', data.length, 'records')
+        // Transform order_book data to match activity interface
+        const activityData = data.map(order => ({
+          id: order.id,
+          property_id: order.property_id,
+          activity_type: (order.order_type === 'buy' ? 'buy_order' : 'sell_order') as 'buy_order' | 'sell_order',
+          wallet_address: order.user_address,
+          share_count: order.shares,
+          price_per_share: order.price_per_share,
+          total_amount: order.shares * order.price_per_share,
+          transaction_hash: order.transaction_hash,
+          created_at: order.created_at
+        }))
+        
+        setPropertyActivity(activityData)
+        console.log('✅ Property activity state updated with', activityData.length, 'records from order_book')
       }
     } catch (error) {
       console.error('Failed to fetch property activity:', error)
@@ -382,10 +395,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <p className="text-sm text-openhouse-fg-muted">Available</p>
               <p className="font-semibold text-openhouse-fg">
                 {availableShares !== null ? availableShares.toLocaleString() : tokenDetails?.available_shares?.toLocaleString() || 'N/A'}
-              </p>
-              {/* Temporary debug info */}
-              <p className="text-xs text-red-500">
-                Debug: availableShares={availableShares}, tokenDetails.available_shares={tokenDetails?.available_shares}
               </p>
             </div>
             <div>
