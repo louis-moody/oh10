@@ -18,6 +18,20 @@ export async function GET(req: NextRequest) {
       transport: http()
     })
 
+    // fix: first check if any orders have been created at all (Cursor Rule 6)
+    let nextOrderId: bigint = BigInt(0)
+    try {
+      nextOrderId = await publicClient.readContract({
+        address: contractAddress as `0x${string}`,
+        abi: OrderBookExchangeABI,
+        functionName: 'nextOrderId',
+        args: []
+      })
+      console.log('🔍 CONTRACT DEBUG: Next Order ID:', nextOrderId.toString())
+    } catch (error) {
+      console.log('❌ CONTRACT DEBUG: Failed to get nextOrderId:', error)
+    }
+
     // Try to get sell orders using getOrdersByType
     let sellOrderIds: readonly bigint[] = []
     let buyOrderIds: readonly bigint[] = []
@@ -46,9 +60,18 @@ export async function GET(req: NextRequest) {
       console.log('❌ CONTRACT DEBUG: Failed to get buy orders:', error)
     }
 
-    // Get details for each order
+    // fix: if nextOrderId > 1, manually check orders 1, 2, 3... (Cursor Rule 6)
     const orders = []
-    const allOrderIds = [...sellOrderIds, ...buyOrderIds]
+    const manualOrderIds = []
+    
+    if (nextOrderId > BigInt(1)) {
+      console.log(`🔍 CONTRACT DEBUG: Checking orders 1 to ${nextOrderId - BigInt(1)} manually...`)
+      for (let i = BigInt(1); i < nextOrderId; i++) {
+        manualOrderIds.push(i)
+      }
+    }
+    
+    const allOrderIds = [...sellOrderIds, ...buyOrderIds, ...manualOrderIds]
     
     for (const orderId of allOrderIds) {
       try {
@@ -83,8 +106,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       contractAddress,
+      nextOrderId: nextOrderId.toString(),
       sellOrderIds: sellOrderIds.map(id => id.toString()),
       buyOrderIds: buyOrderIds.map(id => id.toString()),
+      manualOrderIds: manualOrderIds.map(id => id.toString()),
       totalOrders: orders.length,
       activeOrders: orders.filter(o => o.isActive).length,
       sellOrders: {

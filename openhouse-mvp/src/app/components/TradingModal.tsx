@@ -41,6 +41,7 @@ export function TradingModal({
   const [flowState, setFlowState] = useState<FlowState>('input')
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [wasExecutedInstantly, setWasExecutedInstantly] = useState<boolean>(false) // fix: track if order was executed vs placed (Cursor Rule 7)
 
   // fix: SIMPLE STATE TRACKING - no complex hash management (Cursor Rule 1)
   const [transactionStep, setTransactionStep] = useState<'idle' | 'approving' | 'trading'>('idle')
@@ -210,56 +211,125 @@ export function TradingModal({
     }
   }
 
-  // fix: EXECUTE AGAINST SELL ORDERS - proper order matching (Cursor Rule 2)
+  // fix: EXECUTE INSTANT BUY AGAINST SELL ORDERS (Cursor Rule 2)
   const executeInstantBuy = async (sellOrders: any[]) => {
-    if (!sellOrders || sellOrders.length === 0) {
-      throw new Error('No sell orders available for execution')
-    }
+    if (!address || !usdcAmount || !property.orderbook_contract_address) return
 
-    const targetShares = calculateShares()
+    const targetShares = parseFloat(usdcAmount) / property.price_per_token
+    
     console.log('🔍 TRADING MODAL: Looking for executable sell orders:', {
-      targetShares,
       sellOrdersCount: sellOrders.length,
+      targetShares,
       sellOrders: sellOrders.map(o => ({
         id: o.id,
         shares_remaining: o.shares_remaining,
+        price: o.price,
         contract_order_id: o.contract_order_id,
-        status: o.status,
-        price: o.price
+        status: o.status
       }))
     })
 
-    // fix: VERIFY ORDER EXISTS ON CONTRACT before executing (Cursor Rule 2)
-    console.log('🔍 TRADING MODAL: Checking contract state for sell orders...')
+    // fix: VERIFY ORDERS EXIST ON CONTRACT by checking individual orders (Cursor Rule 2)
+    console.log('🔍 TRADING MODAL: Verifying orders exist on contract...')
     
-    // Check if orders actually exist on the smart contract
-    const contractDebug = await fetch(`/api/debug-contract-orders?contract_address=${property.orderbook_contract_address}`)
-    const contractState = await contractDebug.json()
+    const ethers = await import('ethers')
+    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org')
     
-    console.log('🔍 TRADING MODAL: Contract state:', {
-      sellOrdersOnContract: contractState.sellOrders?.count || 0,
-      buyOrdersOnContract: contractState.buyOrders?.count || 0,
-      sellOrderIds: contractState.sellOrderIds || []
-    })
+    // fix: check each sell order individually to see if it exists on contract (Cursor Rule 6)
+    const validSellOrders = []
+    for (const sellOrder of sellOrders) {
+      if (!sellOrder.contract_order_id) continue
+      
+      try {
+        // Query the specific order from the contract
+        const contract = new ethers.Contract(
+          property.orderbook_contract_address,
+          OrderBookExchangeABI,
+          provider
+        )
+        
+        const contractOrder = await contract.getOrder(sellOrder.contract_order_id)
+        
+        console.log(`🔍 TRADING MODAL: Contract order ${sellOrder.contract_order_id}:`, {
+          orderId: contractOrder[0].toString(),
+          creator: contractOrder[1],
+          orderType: contractOrder[2],
+          tokenAmount: contractOrder[3].toString(),
+          pricePerToken: contractOrder[4].toString(),
+          filledAmount: contractOrder[6].toString(),
+          status: contractOrder[7],
+          isActive: contractOrder[8]
+        })
+        
+        // fix: TEMPORARY - accept all orders to debug status checking (Cursor Rule 6)
+        console.log(`🔍 TRADING MODAL: Order ${sellOrder.contract_order_id} type check - orderType: ${contractOrder[2]} (should be 1 for SELL)`)
 
-    if (!contractState.sellOrders?.count || contractState.sellOrders.count === 0) {
-      console.log('❌ TRADING MODAL: NO SELL ORDERS ON CONTRACT - database out of sync!')
+        // fix: verify order is still active and has remaining shares (Cursor Rule 6)
+        console.log(`🔍 TRADING MODAL: Order ${sellOrder.contract_order_id} status check:`, {
+          isActive: contractOrder[8],
+          status: contractOrder[7].toString(),
+          tokenAmount: contractOrder[3].toString(),
+          filledAmount: contractOrder[6].toString()
+        })
+        
+        if (contractOrder[8] && contractOrder[7] === BigInt(0)) { // isActive && status === ACTIVE
+          const remainingShares = contractOrder[3] - contractOrder[6] // tokenAmount - filledAmount
+          console.log(`🔍 TRADING MODAL: Order ${sellOrder.contract_order_id} remaining shares:`, ethers.formatUnits(remainingShares, 18))
+          if (remainingShares > 0) {
+            validSellOrders.push({
+              ...sellOrder,
+              contractRemainingShares: ethers.formatUnits(remainingShares, 18)
+            })
+            console.log(`✅ TRADING MODAL: Added valid sell order ${sellOrder.contract_order_id}`)
+          }
+        } else {
+          console.log(`❌ TRADING MODAL: Order ${sellOrder.contract_order_id} failed status check - isActive: ${contractOrder[8]}, status: ${contractOrder[7]}`)
+        }
+      } catch (error) {
+        console.log(`❌ TRADING MODAL: Failed to verify order ${sellOrder.contract_order_id}:`, error)
+      }
+    }
+
+    if (validSellOrders.length === 0) {
+      console.log('❌ TRADING MODAL: NO VALID SELL ORDERS ON CONTRACT - database out of sync!')
       console.log('🛒 TRADING MODAL: Creating buy order instead of trying to execute non-existent orders')
       await createBuyOrder()
       return
     }
 
-    // fix: find sell order that actually exists on contract (Cursor Rule 2)
-    const contractSellOrderIds = contractState.sellOrderIds || []
-    const executableOrder = sellOrders.find(order => 
-      order.shares_remaining >= targetShares && 
-      order.contract_order_id && 
-      order.status === 'open' &&
-      contractSellOrderIds.includes(order.contract_order_id.toString())
-    )
+    // fix: find sell order that actually exists on contract and can fulfill the trade (Cursor Rule 2)
+    console.log('🔍 TRADING MODAL: Checking valid sell orders for execution:', validSellOrders.map(order => ({
+      id: order.id,
+      contractOrderId: order.contract_order_id,
+      contractRemainingShares: order.contractRemainingShares,
+      status: order.status,
+      statusType: typeof order.status,
+      canFulfill: parseFloat(order.contractRemainingShares) >= targetShares
+    })))
+
+    const executableOrder = validSellOrders.find(order => {
+      const remainingShares = parseFloat(order.contractRemainingShares)
+      // fix: account for tiny fills - allow orders with 99.9% of target shares (Cursor Rule 4)
+      const hasEnoughShares = remainingShares >= (targetShares * 0.999)
+      const hasContractId = !!order.contract_order_id
+      const statusIsOpen = order.status === 'open'
+      console.log(`🔍 TRADING MODAL: Order ${order.contract_order_id} check:`, {
+        hasEnoughShares,
+        hasContractId,
+        status: order.status,
+        statusType: typeof order.status,
+        statusIsOpen,
+        remainingShares: order.contractRemainingShares,
+        targetShares,
+        threshold: targetShares * 0.999
+      })
+      
+      // fix: require status to be 'open' as per database schema (Cursor Rule 4)
+      return hasEnoughShares && hasContractId && statusIsOpen
+    })
 
     if (!executableOrder) {
-      console.log('❌ TRADING MODAL: No database orders match contract orders')
+      console.log('❌ TRADING MODAL: No valid orders can fulfill the trade amount')
       console.log('🛒 TRADING MODAL: Creating buy order instead')
       await createBuyOrder()
       return
@@ -268,13 +338,12 @@ export function TradingModal({
     console.log('⚡ TRADING MODAL: Executing buy against sell order:', {
       orderId: executableOrder.id,
       contractOrderId: executableOrder.contract_order_id,
-      sharesRemaining: executableOrder.shares_remaining,
+      contractRemainingShares: executableOrder.contractRemainingShares,
       targetShares,
       price: executableOrder.price
     })
 
     // fix: execute order with correct parameters for instant matching (Cursor Rule 2)
-    const ethers = await import('ethers')
     const fillAmountWei = ethers.parseUnits(targetShares.toString(), 18)
     
     console.log('⚡ TRADING MODAL: Executing instant buy order...', {
@@ -284,6 +353,7 @@ export function TradingModal({
     })
 
     setTransactionStep('trading')
+    setWasExecutedInstantly(true) // fix: mark this as instant execution (Cursor Rule 7)
 
     try {
       writeContract({
@@ -336,7 +406,205 @@ export function TradingModal({
     try {
       setFlowState('executing')
       setError('')
+
+      console.log('🛒 TRADING MODAL: executeMarketSell called', {
+        shareAmount,
+        targetProceeds: calculateProceeds(),
+        contractAddress: property.orderbook_contract_address
+      })
+
+      // fix: fetch current market data to find executable buy orders (Cursor Rule 2)
+      const marketData = await fetch(`/api/orderbook/market-data?property_id=${property.id}`)
+      const marketDataJson = await marketData.json()
+      
+      console.log('🛒 TRADING MODAL: Market data for sell:', {
+        totalBuyDemand: marketDataJson.total_buy_demand,
+        buyOrdersCount: marketDataJson.buy_orders?.length || 0,
+        buyOrders: marketDataJson.buy_orders
+      })
+
+      if (marketDataJson.total_buy_demand > 0 && marketDataJson.buy_orders?.length > 0) {
+        console.log('✅ TRADING MODAL: Found buy orders - executing against orderbook')
+        await executeInstantSell(marketDataJson.buy_orders)
+      } else {
+        console.log('🛒 TRADING MODAL: No buy orders available - creating sell order')
+        await createSellOrder()
+      }
+      
+    } catch (error) {
+      console.error('❌ TRADING MODAL: executeMarketSell error:', error)
+      setError(error instanceof Error ? error.message : 'Failed to execute sell order')
+      setFlowState('input')
+      setTransactionStep('idle')
+    }
+  }
+
+  // fix: EXECUTE INSTANT SELL AGAINST BUY ORDERS (Cursor Rule 2)
+  const executeInstantSell = async (buyOrders: any[]) => {
+    if (!address || !shareAmount || !property.orderbook_contract_address) return
+
+    const targetShares = parseFloat(shareAmount)
+    
+    console.log('🔍 TRADING MODAL: Looking for executable buy orders:', {
+      buyOrdersCount: buyOrders.length,
+      targetShares,
+      buyOrders: buyOrders.map(o => ({
+        id: o.id,
+        shares_remaining: o.shares_remaining,
+        price: o.price,
+        contract_order_id: o.contract_order_id,
+        status: o.status
+      }))
+    })
+
+    // fix: VERIFY ORDERS EXIST ON CONTRACT by checking individual orders (Cursor Rule 2)
+    console.log('🔍 TRADING MODAL: Verifying buy orders exist on contract...')
+    
+    const ethers = await import('ethers')
+    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org')
+    
+    // fix: check each buy order individually to see if it exists on contract (Cursor Rule 6)
+    const validBuyOrders = []
+    for (const buyOrder of buyOrders) {
+      if (!buyOrder.contract_order_id) continue
+      
+      try {
+        // Query the specific order from the contract
+        const contract = new ethers.Contract(
+          property.orderbook_contract_address,
+          OrderBookExchangeABI,
+          provider
+        )
+        
+        const contractOrder = await contract.getOrder(buyOrder.contract_order_id)
+        
+        console.log(`🔍 TRADING MODAL: Contract buy order ${buyOrder.contract_order_id}:`, {
+          orderId: contractOrder[0].toString(),
+          creator: contractOrder[1],
+          orderType: contractOrder[2],
+          tokenAmount: contractOrder[3].toString(),
+          pricePerToken: contractOrder[4].toString(),
+          filledAmount: contractOrder[6].toString(),
+          status: contractOrder[7],
+          isActive: contractOrder[8]
+        })
+        
+        // fix: TEMPORARY - accept all orders to debug status checking (Cursor Rule 6)
+        console.log(`🔍 TRADING MODAL: Order ${buyOrder.contract_order_id} type check - orderType: ${contractOrder[2]} (should be 0 for BUY)`)
+
+        // fix: verify order is still active and has remaining shares (Cursor Rule 6)
+        console.log(`🔍 TRADING MODAL: Buy order ${buyOrder.contract_order_id} status check:`, {
+          isActive: contractOrder[8],
+          status: contractOrder[7].toString(),
+          tokenAmount: contractOrder[3].toString(),
+          filledAmount: contractOrder[6].toString()
+        })
+        
+        if (contractOrder[8] && contractOrder[7] === BigInt(0)) { // isActive && status === ACTIVE
+          const remainingShares = contractOrder[3] - contractOrder[6] // tokenAmount - filledAmount
+          console.log(`🔍 TRADING MODAL: Buy order ${buyOrder.contract_order_id} remaining shares:`, ethers.formatUnits(remainingShares, 18))
+          if (remainingShares > 0) {
+            validBuyOrders.push({
+              ...buyOrder,
+              contractRemainingShares: ethers.formatUnits(remainingShares, 18)
+            })
+            console.log(`✅ TRADING MODAL: Added valid buy order ${buyOrder.contract_order_id}`)
+          }
+        } else {
+          console.log(`❌ TRADING MODAL: Buy order ${buyOrder.contract_order_id} failed status check - isActive: ${contractOrder[8]}, status: ${contractOrder[7]}`)
+        }
+      } catch (error) {
+        console.log(`❌ TRADING MODAL: Failed to verify buy order ${buyOrder.contract_order_id}:`, error)
+      }
+    }
+
+    if (validBuyOrders.length === 0) {
+      console.log('❌ TRADING MODAL: NO VALID BUY ORDERS ON CONTRACT - database out of sync!')
+      console.log('🛒 TRADING MODAL: Creating sell order instead of trying to execute non-existent orders')
+      await createSellOrder()
+      return
+    }
+
+    // fix: find buy order that actually exists on contract and can fulfill the trade (Cursor Rule 2)
+    console.log('🔍 TRADING MODAL: Checking valid buy orders for execution:', validBuyOrders.map(order => ({
+      id: order.id,
+      contractOrderId: order.contract_order_id,
+      contractRemainingShares: order.contractRemainingShares,
+      status: order.status,
+      statusType: typeof order.status,
+      canFulfill: parseFloat(order.contractRemainingShares) >= targetShares
+    })))
+
+    const executableOrder = validBuyOrders.find(order => {
+      const remainingShares = parseFloat(order.contractRemainingShares)
+      // fix: account for tiny fills - allow orders with 99.9% of target shares (Cursor Rule 4)
+      const hasEnoughShares = remainingShares >= (targetShares * 0.999)
+      const hasContractId = !!order.contract_order_id
+      const statusIsOpen = order.status === 'open'
+      console.log(`🔍 TRADING MODAL: Buy order ${order.contract_order_id} check:`, {
+        hasEnoughShares,
+        hasContractId,
+        status: order.status,
+        statusType: typeof order.status,
+        statusIsOpen,
+        remainingShares: order.contractRemainingShares,
+        targetShares,
+        threshold: targetShares * 0.999
+      })
+      
+      // fix: require status to be 'open' as per database schema (Cursor Rule 4)
+      return hasEnoughShares && hasContractId && statusIsOpen
+    })
+
+    if (!executableOrder) {
+      console.log('❌ TRADING MODAL: No valid buy orders can fulfill the trade amount')
+      console.log('🛒 TRADING MODAL: Creating sell order instead')
+      await createSellOrder()
+      return
+    }
+
+    console.log('⚡ TRADING MODAL: Executing sell against buy order:', {
+      orderId: executableOrder.id,
+      contractOrderId: executableOrder.contract_order_id,
+      contractRemainingShares: executableOrder.contractRemainingShares,
+      targetShares,
+      price: executableOrder.price
+    })
+
+    // fix: execute order with correct parameters for instant matching (Cursor Rule 2)
+    const fillAmountWei = ethers.parseUnits(targetShares.toString(), 18)
+    
+    console.log('⚡ TRADING MODAL: Executing instant sell order...', {
+      contractOrderId: executableOrder.contract_order_id,
+      fillAmount: fillAmountWei.toString(),
+      contractAddress: property.orderbook_contract_address
+    })
+
+    setTransactionStep('trading')
+    setWasExecutedInstantly(true) // fix: mark this as instant execution (Cursor Rule 7)
+
+    try {
+      writeContract({
+        address: property.orderbook_contract_address as `0x${string}`,
+        abi: OrderBookExchangeABI,
+        functionName: 'executeOrder',
+        args: [BigInt(executableOrder.contract_order_id), fillAmountWei]
+      })
+    } catch (error) {
+      console.error('❌ TRADING MODAL: executeOrder failed:', error)
+      setError(error instanceof Error ? error.message : 'Failed to execute order')
+      setFlowState('error')
+      setTransactionStep('idle')
+    }
+  }
+
+  // fix: CREATE NEW SELL ORDER (fallback when no buy orders exist) (Cursor Rule 2)
+  const createSellOrder = async () => {
+    if (!address || !shareAmount) return
+
+    try {
       setTransactionStep('trading') // fix: set transaction step before writeContract (Cursor Rule 7)
+      setWasExecutedInstantly(false) // fix: mark this as order placement, not execution (Cursor Rule 7)
 
       const ethers = await import('ethers')
       const sharesWei = ethers.parseUnits(shareAmount, 18)
@@ -376,7 +644,14 @@ export function TradingModal({
       console.log('✅ TRADING MODAL: Transaction confirmed by wallet, recording...')
       await recordTradeActivity(transactionHash)
       setFlowState('success')
-      setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
+      
+      // fix: set different success messages for executed vs placed orders (Cursor Rule 7)
+      if (wasExecutedInstantly) {
+        setSuccessMessage(`${activeTab === 'buy' ? 'Purchase' : 'Sale'} completed successfully!`)
+      } else {
+        setSuccessMessage(`${activeTab === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`)
+      }
+      
       setTransactionStep('idle')
       onTradeSuccess()
       
@@ -433,6 +708,7 @@ export function TradingModal({
       setSuccessMessage(null)
       setTransactionStep('idle')
       setRecordedHashes(new Set())
+      setWasExecutedInstantly(false) // fix: reset execution flag (Cursor Rule 7)
     }
   }, [isOpen])
 
@@ -540,6 +816,7 @@ export function TradingModal({
 
     console.log('🔄 TRADING MODAL: Setting transaction step to trading before createBuyOrder')
     setTransactionStep('trading')
+    setWasExecutedInstantly(false) // fix: mark this as order placement, not execution (Cursor Rule 7)
 
     try {
       console.log('🛒 TRADING MODAL: Calling writeContract for createBuyOrder with args:', {
@@ -773,7 +1050,7 @@ export function TradingModal({
                                               if (activeTab === 'buy') {
                           executeBuyWithApproval()
                         } else {
-                          executeSellWithApproval() // fix: call approval function for sell orders (Cursor Rule 7)
+                          executeSellWithApproval()
                         }
                     }}
                     className="w-full"
@@ -858,7 +1135,7 @@ export function TradingModal({
                 }}
                 className="flex-1"
               >
-                Place Another Order
+{wasExecutedInstantly ? 'Trade More' : 'Place Another Order'}
               </Button>
               <Button
                 type="button"
@@ -886,43 +1163,82 @@ export function TradingModal({
               </div>
               <div className="mt-3">
                 <h3 className="text-lg font-medium text-gray-900">
-                  {activeTab === 'buy' ? 'Buy Order Placed' : 'Sell Order Placed'}
+                  {wasExecutedInstantly 
+                    ? (activeTab === 'buy' ? 'Purchase Complete' : 'Sale Complete')
+                    : (activeTab === 'buy' ? 'Buy Order Placed' : 'Sell Order Placed')
+                  }
                 </h3>
                 {/* fix: CLEAR ORDERBOOK EXPLANATION - set expectations (Cursor Rule 14) */}
                 <div className="mt-2 space-y-2">
                   <p className="text-sm text-gray-500">
                     {successMessage}
                   </p>
-                  {activeTab === 'buy' ? (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-                      <div className="flex items-start gap-2">
-                        <Clock className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-blue-800">Your Order is Active</p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            Your USDC is safely escrowed in the smart contract. You'll receive tokens when someone sells to you at $1.00 per token.
-                          </p>
-                          <p className="text-xs text-blue-600 mt-1 font-medium">
-                            Expected delivery: Usually within 24 hours
-                          </p>
+                  {wasExecutedInstantly ? (
+                    // fix: show completion message for instant execution (Cursor Rule 7)
+                    activeTab === 'buy' ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-green-800">Purchase Completed</p>
+                            <p className="text-xs text-green-700 mt-1">
+                              Your tokens have been transferred to your wallet. USDC was exchanged instantly at $1.00 per token.
+                            </p>
+                            <p className="text-xs text-green-600 mt-1 font-medium">
+                              Transaction complete: Check your wallet balance
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-green-800">Sale Completed</p>
+                            <p className="text-xs text-green-700 mt-1">
+                              Your USDC has been transferred to your wallet. Tokens were sold instantly at $1.00 per token.
+                            </p>
+                            <p className="text-xs text-green-600 mt-1 font-medium">
+                              Transaction complete: Check your wallet balance
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
                   ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
-                      <div className="flex items-start gap-2">
-                        <Clock className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-green-800">Your Order is Active</p>
-                          <p className="text-xs text-green-700 mt-1">
-                            Your tokens are safely escrowed in the smart contract. You'll receive USDC when someone buys from you at $1.00 per token.
-                          </p>
-                          <p className="text-xs text-green-600 mt-1 font-medium">
-                            Expected sale: Usually within 24 hours
-                          </p>
+                    // fix: show pending order message for order placement (Cursor Rule 7)
+                    activeTab === 'buy' ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                        <div className="flex items-start gap-2">
+                          <Clock className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-blue-800">Your Order is Active</p>
+                            <p className="text-xs text-blue-700 mt-1">
+                              Your USDC is safely escrowed in the smart contract. You'll receive tokens when someone sells to you at $1.00 per token.
+                            </p>
+                            <p className="text-xs text-blue-600 mt-1 font-medium">
+                              Expected delivery: Usually within 24 hours
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                        <div className="flex items-start gap-2">
+                          <Clock className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-green-800">Your Order is Active</p>
+                            <p className="text-xs text-green-700 mt-1">
+                              Your tokens are safely escrowed in the smart contract. You'll receive USDC when someone buys from you at $1.00 per token.
+                            </p>
+                            <p className="text-xs text-green-600 mt-1 font-medium">
+                              Expected sale: Usually within 24 hours
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
                   )}
                 </div>
               </div>
