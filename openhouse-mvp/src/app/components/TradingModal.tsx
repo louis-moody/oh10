@@ -38,7 +38,7 @@ export function TradingModal({
   const chainId = useChainId()
 
   const [activeTab, setActiveTab] = useState<TradeTab>('buy')
-  // fix: SIMPLE USDC AMOUNT INPUT ONLY (Cursor Rule 1)
+  // fix: OpenHouse controls pricing - no user-defined prices (Cursor Rule 1)
   const [usdcAmount, setUsdcAmount] = useState('')
   const [shareAmount, setShareAmount] = useState('') // for sell only
   const [flowState, setFlowState] = useState<FlowState>('input')
@@ -60,11 +60,14 @@ export function TradingModal({
 
   // fix: simple transaction state - no complex approval tracking (Cursor Rule 7)
   const [transactionStep, setTransactionStep] = useState<'idle' | 'approving' | 'trading'>('idle')
+  
+  // fix: prevent infinite loop with tracking state (Cursor Rule 6)
+  const [hasRecorded, setHasRecorded] = useState(false)
 
   // Load user balances
   useEffect(() => {
     if (address && isOpen) {
-      console.log('🔍 Loading balances for:', {
+      console.log('🔍 TRADING MODAL: Loading balances for:', {
         address,
         chainId,
         isConnected,
@@ -78,6 +81,15 @@ export function TradingModal({
 
   const getUsdcAddress = () => {
     return process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+  }
+
+  // fix: Dynamic contract loading from property_token_details (Cursor Rule 4)
+  const getContractAddresses = () => {
+    return {
+      tokenContract: property.contract_address,
+      orderbookContract: property.orderbook_contract_address,
+      usdcContract: getUsdcAddress()
+    }
   }
 
   const loadUserBalances = async () => {
@@ -101,12 +113,12 @@ export function TradingModal({
       const tokenBalanceFormatted = parseFloat(ethers.formatUnits(tokenBalance, 18))
       setUserTokenBalance(tokenBalanceFormatted)
       
-      console.log(`🔍 Real balances for ${address}:`)
+      console.log(`🔍 TRADING MODAL: Real balances for ${address}:`)
       console.log(`   USDC: ${ethers.formatUnits(usdcBalance, 6)}`)
       console.log(`   ${property.name} tokens: ${tokenBalanceFormatted}`)
       
     } catch (error) {
-      console.error('Error loading on-chain balances:', error)
+      console.error('❌ TRADING MODAL: Error loading on-chain balances:', error)
     }
   }
 
@@ -117,7 +129,7 @@ export function TradingModal({
 
   // fix: SIMPLE SELL FLOW - approve then sell in sequence (Cursor Rule 7)
   const executeSellWithApproval = async () => {
-    console.log('🔴 executeSellWithApproval called with:', {
+    console.log('🔴 TRADING MODAL: executeSellWithApproval called with:', {
       address,
       contractAddress: property.contract_address,
       orderbookAddress: property.orderbook_contract_address,
@@ -129,14 +141,14 @@ export function TradingModal({
 
     // fix: check if user is on correct network (Cursor Rule 6)
     if (chainId !== 84532) {
-      console.log('🔴 Wrong network:', { chainId, expected: 84532 })
+      console.log('🔴 TRADING MODAL: Wrong network:', { chainId, expected: 84532 })
       setError('Please switch to Base Sepolia network')
       setFlowState('error')
       return
     }
 
     if (!address || !property.contract_address || !property.orderbook_contract_address || !shareAmount) {
-      console.log('🔴 Missing required parameters:', {
+      console.log('🔴 TRADING MODAL: Missing required parameters:', {
         hasAddress: !!address,
         address,
         hasContractAddress: !!property.contract_address,
@@ -152,15 +164,15 @@ export function TradingModal({
     }
 
     try {
-      console.log('🔴 Setting transaction state to approving')
+      console.log('🔴 TRADING MODAL: Setting transaction state to approving')
       setTransactionStep('approving')
       setFlowState('executing')
       
-      console.log('🔴 Importing ethers...')
+      console.log('🔴 TRADING MODAL: Importing ethers...')
       const ethers = await import('ethers')
       const requiredAmount = ethers.parseUnits(shareAmount, 18)
       
-      console.log('📝 Step 1: Approving tokens for sale', {
+      console.log('📝 TRADING MODAL: Step 1: Approving tokens for sale', {
         tokenContract: property.contract_address,
         spender: property.orderbook_contract_address,
         amount: requiredAmount.toString(),
@@ -168,7 +180,7 @@ export function TradingModal({
         shareAmountParsed: parseFloat(shareAmount)
       })
 
-      console.log('🔴 About to call writeContract...')
+      console.log('🔴 TRADING MODAL: About to call writeContract...')
       // First approve tokens
       const result = writeContract({
         address: property.contract_address as `0x${string}`,
@@ -188,9 +200,9 @@ export function TradingModal({
         args: [property.orderbook_contract_address as `0x${string}`, requiredAmount]
       })
       
-      console.log('📝 writeContract result:', result)
+      console.log('📝 TRADING MODAL: writeContract result:', result)
     } catch (error) {
-      console.error('🔴 Sell with approval error:', error)
+      console.error('🔴 TRADING MODAL: Sell with approval error:', error)
       setTransactionStep('idle')
       setFlowState('error')
       setError(error instanceof Error ? error.message : 'Transaction failed')
@@ -199,7 +211,7 @@ export function TradingModal({
 
   // fix: REAL WALLET TRANSACTION - NO FAKE ACTIONS (Cursor Rule 1)
   const executeTrade = async () => {
-    console.log('🚀 executeTrade called', { 
+    console.log('🚀 TRADING MODAL: executeTrade called', { 
       address, 
       orderbook: property.orderbook_contract_address,
       activeTab,
@@ -217,7 +229,7 @@ export function TradingModal({
     }
 
     if (!address || !property.orderbook_contract_address) {
-      console.log('❌ Missing address or orderbook contract:', {
+      console.log('❌ TRADING MODAL: Missing address or orderbook contract:', {
         hasAddress: !!address,
         hasOrderbook: !!property.orderbook_contract_address
       })
@@ -227,39 +239,40 @@ export function TradingModal({
     // fix: validate inputs based on trade type (Cursor Rule 7)
     if (activeTab === 'buy') {
       if (!usdcAmount || parseFloat(usdcAmount) <= 0) {
-        console.log('❌ Invalid USDC amount')
+        console.log('❌ TRADING MODAL: Invalid USDC amount')
         setError('Please enter a valid USDC amount')
         return
       }
     } else {
       if (!shareAmount || parseFloat(shareAmount) <= 0) {
-        console.log('❌ Invalid share amount')
+        console.log('❌ TRADING MODAL: Invalid share amount')
         setError('Please enter a valid number of shares to sell')
         return
       }
     }
 
-    console.log('✅ Validation passed, setting executing state')
+    console.log('✅ TRADING MODAL: Validation passed, setting executing state')
     setFlowState('executing')
     setError('')
 
     try {
       const ethers = await import('ethers')
-      
+
       if (activeTab === 'buy') {
-        const usdcAmountWei = ethers.parseUnits(usdcAmount, 6)
-        const priceWei = ethers.parseUnits(property.price_per_token.toString(), 18)
+        // fix: Use OpenHouse-controlled price, not user-defined price
         const tokenAmount = ethers.parseUnits((parseFloat(usdcAmount) / property.price_per_token).toString(), 18)
+        const priceWei = ethers.parseUnits(property.price_per_token.toString(), 18)
         
-        console.log('💰 Buy order params:', {
-          usdcAmountWei: usdcAmountWei.toString(),
-          priceWei: priceWei.toString(),
+        console.log('💰 TRADING MODAL: Buy order params with OpenHouse price:', {
+          usdcAmount,
+          openHousePrice: property.price_per_token,
           tokenAmount: tokenAmount.toString(),
+          priceWei: priceWei.toString(),
           orderbook: property.orderbook_contract_address
         })
         
-        // fix: DIRECT WALLET CALL - createBuyOrder (Cursor Rule 1)
-        console.log('📞 Calling writeContract for buy order...')
+        // fix: DIRECT WALLET CALL - createBuyOrder with user price (Cursor Rule 1)
+        console.log('📞 TRADING MODAL: Calling writeContract for buy order...')
         const buyResult = writeContract({
           address: property.orderbook_contract_address as `0x${string}`,
           abi: [
@@ -277,19 +290,20 @@ export function TradingModal({
           functionName: 'createBuyOrder',
           args: [tokenAmount, priceWei]
         })
-        console.log('📞 Buy writeContract result:', buyResult)
+        console.log('📞 TRADING MODAL: Buy writeContract result:', buyResult)
       } else {
+        // fix: Use OpenHouse-controlled price for sell orders (Cursor Rule 1)
         const sharesWei = ethers.parseUnits(shareAmount, 18)
         const priceWei = ethers.parseUnits(property.price_per_token.toString(), 18)
         
-        console.log('💰 Sell order params:', {
+        console.log('💰 TRADING MODAL: Sell order params:', {
           sharesWei: sharesWei.toString(),
           priceWei: priceWei.toString(),
           orderbook: property.orderbook_contract_address
         })
         
         // fix: DIRECT WALLET CALL - createSellOrder (Cursor Rule 1)
-        console.log('📞 Calling writeContract for sell order...')
+        console.log('📞 TRADING MODAL: Calling writeContract for sell order...')
         const sellResult = writeContract({
           address: property.orderbook_contract_address as `0x${string}`,
           abi: [
@@ -307,21 +321,21 @@ export function TradingModal({
           functionName: 'createSellOrder',
           args: [sharesWei, priceWei]
         })
-        console.log('📞 Sell writeContract result:', sellResult)
+        console.log('📞 TRADING MODAL: Sell writeContract result:', sellResult)
       }
       
     } catch (error) {
-      console.error('Trade execution error:', error)
+      console.error('❌ TRADING MODAL: Trade execution error:', error)
       setError(error instanceof Error ? error.message : 'Trade execution failed')
       setFlowState('error')
       setTransactionStep('idle')
     }
   }
 
-  // fix: handle transaction states (Cursor Rule 1)
+  // fix: handle transaction states with extensive logging (Cursor Rule 1)
   useEffect(() => {
     if (writeError) {
-      console.log('❌ Write error:', writeError)
+      console.log('❌ TRADING MODAL: Write error:', writeError)
       setError(writeError.message)
       setFlowState('error')
     }
@@ -329,36 +343,49 @@ export function TradingModal({
 
   useEffect(() => {
     if (hash) {
-      console.log('📝 Transaction hash received:', hash)
+      console.log('📝 TRADING MODAL: Transaction hash received:', hash)
+      // Reset recording flag when new transaction starts
+      setHasRecorded(false)
     }
   }, [hash])
 
   useEffect(() => {
     if (isPending) {
-      console.log('⏳ Transaction pending...')
+      console.log('⏳ TRADING MODAL: Transaction pending...')
     }
   }, [isPending])
 
   useEffect(() => {
     if (isConfirming) {
-      console.log('🔄 Transaction confirming...')
+      console.log('🔄 TRADING MODAL: Transaction confirming...')
     }
   }, [isConfirming])
 
+  // fix: SINGLE TRANSACTION CONFIRMATION HANDLER with extensive logging
   useEffect(() => {
-    if (isConfirmed) {
-      console.log('✅ Transaction confirmed!')
+    console.log('🔄 TRADING MODAL: Transaction state change:', {
+      isConfirmed,
+      hasRecorded,
+      transactionStep,
+      activeTab,
+      hash: hash?.slice(0, 10) + '...'
+    })
+
+    if (isConfirmed && !hasRecorded) {
+      console.log('✅ TRADING MODAL: Transaction confirmed - starting processing')
       
       // fix: handle approval step vs final trade (Cursor Rule 7)
       if (transactionStep === 'approving' && activeTab === 'sell') {
-        console.log('✅ Approval confirmed! Now creating sell order...')
+        console.log('✅ TRADING MODAL: Approval confirmed! Now creating sell order...')
         setTransactionStep('trading')
         // Automatically proceed to sell order
         setTimeout(() => {
           executeTrade()
         }, 1000)
       } else {
-        // fix: record activity in Supabase when trade is confirmed (Cursor Rule 4)
+        console.log('✅ TRADING MODAL: Final transaction confirmed - recording activity')
+        // fix: prevent multiple calls with flag (Cursor Rule 6)
+        setHasRecorded(true)
         recordTradeActivity()
         
         setFlowState('success')
@@ -368,70 +395,119 @@ export function TradingModal({
         setTimeout(() => {
           onTradeSuccess()
           onClose()
-        }, 3000)
+        }, 8000)
       }
     }
-  }, [isConfirmed, activeTab, transactionStep, onTradeSuccess, onClose])
+  }, [isConfirmed, hasRecorded, transactionStep, activeTab, hash])
 
-  // fix: record trading activity in Supabase for activity tab (Cursor Rule 4)
+  // fix: record orderbook transaction with comprehensive auth debugging (Cursor Rule 4)
   const recordTradeActivity = async () => {
+    console.log('📝 TRADING MODAL: ===== STARTING RECORD TRADE ACTIVITY =====')
+    
     try {
-      console.log('📝 Recording trade activity:', {
-        propertyId: property.id,
-        activeTab,
-        hash,
-        address,
-        shareAmount,
-        usdcAmount
-      })
-
-      // Calculate final amounts
-      const shares = activeTab === 'buy' ? calculateShares() : parseFloat(shareAmount)
-      const totalAmount = activeTab === 'buy' ? parseFloat(usdcAmount) : calculateProceeds()
-
-      const activityData = {
-        property_id: property.id,
-        activity_type: activeTab === 'buy' ? 'buy_order' : 'sell_order',
-        wallet_address: address,
-        share_count: Math.round(shares),
-        price_per_share: property.price_per_token,
-        total_amount: totalAmount,
-        transaction_hash: hash,
-        created_at: new Date().toISOString()
+      // fix: validate required data before API call (Cursor Rule 6)
+      if (!hash || !address || !property.orderbook_contract_address) {
+        console.error('❌ TRADING MODAL: Missing required data for recording:', {
+          hasHash: !!hash,
+          hash: hash?.slice(0, 10) + '...',
+          hasAddress: !!address,
+          address: address?.slice(0, 6) + '...',
+          hasContract: !!property.orderbook_contract_address,
+          contract: property.orderbook_contract_address?.slice(0, 6) + '...'
+        })
+        return
       }
 
-      console.log('📝 Activity data to record:', activityData)
+      console.log('📝 TRADING MODAL: Recording orderbook transaction with data:', {
+        propertyId: property.id,
+        activeTab,
+        hash: hash.slice(0, 10) + '...',
+        address: address.slice(0, 6) + '...',
+        shareAmount,
+        usdcAmount,
+        openHousePrice: property.price_per_token
+      })
 
-      // Try to record in property_activity table
-      const response = await fetch('/api/activity/record', {
+      // fix: Calculate amounts using OpenHouse-controlled price (Cursor Rule 1)
+      const shares = activeTab === 'buy' 
+        ? parseFloat(usdcAmount) / property.price_per_token
+        : parseFloat(shareAmount)
+
+      // fix: validate calculated shares (Cursor Rule 6)
+      if (!shares || shares <= 0) {
+        console.error('❌ TRADING MODAL: Invalid shares calculated:', shares)
+        return
+      }
+
+      // fix: Record in order_book table via API (Cursor Rule 4)
+      const orderData = {
+        property_id: property.id,
+        order_type: activeTab,
+        user_address: address,
+        shares: shares,
+        price_per_share: property.price_per_token,
+        transaction_hash: hash,
+        contract_address: property.orderbook_contract_address
+      }
+
+      console.log('📝 TRADING MODAL: Order data to send to API:', orderData)
+
+      // fix: Check authentication before API call
+      console.log('🔐 TRADING MODAL: Checking authentication status...')
+      console.log('🔐 TRADING MODAL: Current cookies:', document.cookie)
+      
+      const response = await fetch('/api/orderbook/record', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        credentials: 'include',
-        body: JSON.stringify(activityData)
+        credentials: 'include', // Critical for cookie authentication
+        body: JSON.stringify(orderData)
+      })
+
+      console.log('📝 TRADING MODAL: API Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
       })
 
       if (response.ok) {
-        console.log('✅ Activity recorded successfully')
+        const result = await response.json()
+        console.log('✅ TRADING MODAL: Orderbook transaction recorded successfully:', result)
       } else {
-        console.log('⚠️ Failed to record activity in database:', await response.text())
+        const errorText = await response.text()
+        console.error('❌ TRADING MODAL: Failed to record orderbook transaction:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        })
+        
+        // fix: if authentication failed, show clear error (Cursor Rule 6)
+        if (response.status === 401) {
+          console.error('❌ TRADING MODAL: Authentication failed - user needs to reconnect wallet')
+          setError('Authentication failed. Please reconnect your wallet and try again.')
+        } else {
+          setError(`Failed to record transaction: ${response.status} ${response.statusText}`)
+        }
       }
 
     } catch (error) {
-      console.error('Error recording trade activity:', error)
+      console.error('❌ TRADING MODAL: Error in recordTradeActivity:', error)
+      setError('Failed to record transaction. Please contact support.')
     }
+    
+    console.log('📝 TRADING MODAL: ===== FINISHED RECORD TRADE ACTIVITY =====')
   }
 
-  // fix: calculate shares from USDC amount at OpenHouse price (Cursor Rule 1)
+  // fix: calculate shares from USDC amount at OpenHouse-controlled price (Cursor Rule 1)
   const calculateShares = () => {
-    if (!usdcAmount || !property.price_per_token) return 0
+    if (!usdcAmount) return 0
     return parseFloat(usdcAmount) / property.price_per_token
   }
 
-  // fix: calculate USDC proceeds from shares at OpenHouse price (Cursor Rule 1)
+  // fix: calculate USDC proceeds from shares at OpenHouse-controlled price (Cursor Rule 1)
   const calculateProceeds = () => {
-    if (!shareAmount || !property.price_per_token) return 0
+    if (!shareAmount) return 0
     return parseFloat(shareAmount) * property.price_per_token
   }
 
@@ -454,12 +530,16 @@ export function TradingModal({
   // Reset modal state when closed
   useEffect(() => {
     if (!isOpen) {
+      console.log('🔄 TRADING MODAL: Modal closed - resetting all state')
       setActiveTab('buy')
       setUsdcAmount('')
       setShareAmount('')
+      // fix: OpenHouse controls pricing - no user input needed
       setFlowState('input')
       setError(null)
       setSuccessMessage(null)
+      setHasRecorded(false) // Reset recording flag
+      setTransactionStep('idle')
     }
   }, [isOpen])
 
@@ -581,45 +661,43 @@ export function TradingModal({
                   </div>
                 )}
 
-                {/* fix: show cost/proceeds based on trade type (Cursor Rule 1) */}
+                {/* Price display - simplified */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-blue-800">Price:</span>
+                    <span className="text-lg font-semibold text-blue-900">
+                      {formatCurrency(property.price_per_token)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Buy summary - simplified */}
                 {activeTab === 'buy' && usdcAmount && parseFloat(usdcAmount) > 0 && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-green-800">You will receive:</span>
+                      <span className="text-sm font-medium text-green-800">You get:</span>
                       <span className="text-lg font-semibold text-green-900">
-                        {calculateShares().toFixed(2)} shares
+                        {calculateShares().toFixed(2)} tokens
                       </span>
                     </div>
-                    <p className="text-xs text-green-700 mt-1">
-                      At fixed price: {formatCurrency(property.price_per_token)} per share
-                    </p>
                   </div>
                 )}
 
                 {activeTab === 'sell' && shareAmount && parseFloat(shareAmount) > 0 && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-red-800">You will receive:</span>
+                      <span className="text-sm font-medium text-red-800">You get:</span>
                       <span className="text-lg font-semibold text-red-900">
                         {formatCurrency(calculateProceeds())}
                       </span>
                     </div>
-                    <p className="text-xs text-red-700 mt-1">
-                      At fixed price: {formatCurrency(property.price_per_token)} per share
-                    </p>
-                    {/* fix: simple status message (Cursor Rule 7) */}
-                    {transactionStep === 'approving' && (
-                      <p className="text-xs text-yellow-700 mt-2 font-medium">
-                        ⏳ Approving tokens for sale...
-                      </p>
-                    )}
                   </div>
                 )}
 
                 {/* fix: SIMPLE ONE BUTTON - wallet handles approval automatically (Cursor Rule 7) */}
                 <Button
                   onClick={() => {
-                    console.log('🔴 BUTTON CLICKED!', {
+                    console.log('🔴 TRADING MODAL: BUTTON CLICKED!', {
                       activeTab,
                       transactionStep,
                       shareAmount,
@@ -627,102 +705,69 @@ export function TradingModal({
                       isPending,
                       isConfirming,
                       address,
-                      orderbook: property.orderbook_contract_address
+                      orderbookEnabled
                     })
                     
-                    if (activeTab === 'sell' && transactionStep === 'idle') {
-                      console.log('🔴 Calling executeSellWithApproval')
+                    if (activeTab === 'sell') {
                       executeSellWithApproval()
                     } else {
-                      console.log('🔴 Calling executeTrade')
                       executeTrade()
                     }
                   }}
-                  disabled={
-                    isPending || isConfirming ||
-                    (activeTab === 'buy' 
-                      ? !usdcAmount || parseFloat(usdcAmount) <= 0
-                      : !shareAmount || parseFloat(shareAmount) <= 0)
-                  }
+                  disabled={isPending || isConfirming || !orderbookEnabled}
                   className={`w-full ${
                     activeTab === 'buy' 
                       ? 'bg-green-600 hover:bg-green-700' 
                       : 'bg-red-600 hover:bg-red-700'
-                  }`}
+                  } text-white`}
                 >
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  {isPending || isConfirming 
-                    ? transactionStep === 'approving' ? 'Approving...' : 'Processing...'
-                    : activeTab === 'buy' 
-                      ? `Buy Shares for $${usdcAmount || '0'}` 
-                      : `Sell ${shareAmount || '0'} Shares`
-                  }
+                  {isPending || isConfirming ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {isPending ? 'Confirm in Wallet...' : 'Processing...'}
+                    </>
+                  ) : (
+                    `${activeTab === 'buy' ? 'Buy' : 'Sell'} Tokens`
+                  )}
                 </Button>
 
-                <div className="text-xs text-gray-500 text-center mt-4">
-                  Fixed price trading • Instant execution • 0.5% protocol fee
-                </div>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-red-800">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Error</span>
+                    </div>
+                    <p className="text-red-700 text-sm mt-1">{error}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         )}
 
-        {isPending && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-            <div>
-              <p className="text-blue-800 font-medium">Check your wallet to sign</p>
-              <p className="text-blue-700 text-sm">This should take just a few seconds</p>
-            </div>
+        {flowState === 'success' && (
+          <div className="text-center py-8">
+            <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Transaction Successful!</h3>
+            <p className="text-gray-600 mb-4">{successMessage}</p>
+            <Button onClick={onClose} className="bg-green-600 hover:bg-green-700 text-white">
+              Close
+            </Button>
           </div>
         )}
 
-        {isConfirming && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Loader2 className="h-5 w-5 animate-spin text-yellow-600" />
-              <p className="text-yellow-800 font-medium">Transaction confirming...</p>
-            </div>
-            <p className="text-yellow-700 text-sm mb-3">Usually takes 30-60 seconds on Base Sepolia</p>
-            {hash && (
-              <a 
-                href={`https://sepolia.basescan.org/tx/${hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 text-sm inline-flex items-center gap-1"
-              >
-                View on BaseScan <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
-        )}
-
-        {flowState === 'success' && successMessage && (
-          <div className="py-8">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-1" />
-              <div>
-                <p className="text-green-800 font-medium">Order Placed!</p>
-                <p className="text-green-700 text-sm mt-1">{successMessage}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {flowState === 'error' && error && (
-          <div className="py-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-1" />
-              <div className="flex-1">
-                <p className="text-red-800 font-medium">Trade Failed</p>
-                <p className="text-red-700 text-sm mt-1">{error}</p>
-              </div>
-            </div>
-            
-            <Button
-              onClick={() => setFlowState('input')}
-              className="w-full mt-4"
-              variant="outline"
+        {flowState === 'error' && (
+          <div className="text-center py-8">
+            <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Transaction Failed</h3>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button 
+              onClick={() => {
+                setFlowState('input')
+                setError(null)
+                setTransactionStep('idle')
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
             >
               Try Again
             </Button>

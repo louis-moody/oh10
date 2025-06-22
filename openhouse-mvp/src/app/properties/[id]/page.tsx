@@ -49,6 +49,9 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   // fix: live market data states (Cursor Rule 4)
   const [availableShares, setAvailableShares] = useState<number | null>(null)
   const [currentPrice, setCurrentPrice] = useState<number | null>(null)
+  const [bestBid, setBestBid] = useState<number | null>(null)
+  const [bestAsk, setBestAsk] = useState<number | null>(null)
+  const [orderBookDepth, setOrderBookDepth] = useState({ sellOrders: 0, buyOrders: 0 })
   
   const { isConnected, address } = useAccount()
   const [propertyId, setPropertyId] = useState<string>('')
@@ -141,39 +144,66 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
   }
 
-  // fix: fetch real market data from orderbook and transactions (Cursor Rule 4)
+  // fix: fetch real market data from order_book table (Cursor Rule 4)
   const fetchMarketData = async (propertyId: string) => {
     try {
       if (!supabase) return
 
-      // fix: get available shares for purchase from active sell orders only (Cursor Rule 4)
+      // fix: get available shares for purchase from active sell orders (Cursor Rule 4)
       const { data: sellOrders } = await supabase
         .from('order_book')
-        .select('shares_remaining')
+        .select('shares_remaining, price_per_share')
         .eq('property_id', propertyId)
         .eq('order_type', 'sell')
-        .eq('status', 'active')
-        .gt('shares_remaining', 0) // Only orders with remaining shares
+        .eq('status', 'open')
+        .gt('shares_remaining', 0)
+        .order('price_per_share', { ascending: true })
 
       if (sellOrders && sellOrders.length > 0) {
         const totalAvailable = sellOrders.reduce((sum, order) => sum + order.shares_remaining, 0)
         setAvailableShares(totalAvailable)
+        
+        // Best ask (lowest sell price)
+        const bestAskPrice = sellOrders[0].price_per_share
+        setBestAsk(bestAskPrice)
+        setCurrentPrice(bestAskPrice)
       } else {
-        setAvailableShares(0) // No shares available for purchase
+        setAvailableShares(0)
+        setBestAsk(null)
       }
 
-      // Get current market price from last trade
-      const { data: lastTrade } = await supabase
-        .from('transactions')
-        .select('price_per_token')
+      // fix: get best bid (highest buy price) from active buy orders (Cursor Rule 4)
+      const { data: buyOrders } = await supabase
+        .from('order_book')
+        .select('price_per_share')
         .eq('property_id', propertyId)
-        .order('created_at', { ascending: false })
+        .eq('order_type', 'buy')
+        .eq('status', 'open')
+        .gt('shares_remaining', 0)
+        .order('price_per_share', { ascending: false })
         .limit(1)
-        .single()
 
-      if (lastTrade?.price_per_token) {
-        setCurrentPrice(lastTrade.price_per_token)
+      if (buyOrders && buyOrders.length > 0) {
+        setBestBid(buyOrders[0].price_per_share)
+      } else {
+        setBestBid(null)
       }
+
+      // fix: set orderbook depth (Cursor Rule 4)
+      setOrderBookDepth({
+        sellOrders: sellOrders?.length || 0,
+        buyOrders: buyOrders?.length || 0
+      })
+
+      // Log market depth for transparency
+      console.log('📊 Real market data for property:', propertyId, {
+        availableShares: sellOrders?.reduce((sum, order) => sum + order.shares_remaining, 0) || 0,
+        bestAsk: sellOrders?.[0]?.price_per_share || null,
+        bestBid: buyOrders?.[0]?.price_per_share || null,
+        activeSellOrders: sellOrders?.length || 0,
+        activeBuyOrders: buyOrders?.length || 0
+      })
+      
     } catch (error) {
       console.error('Failed to fetch market data:', error)
     }
@@ -294,9 +324,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
   // fix: refresh data after trade success (Cursor Rule 4)
   const handleTradeSuccess = () => {
-    if (propertyId) {
+    if (propertyId && property) {
+      // Refresh all market data
       fetchPropertyActivity(propertyId)
       fetchMarketData(propertyId)
+      fetchFundingProgress(propertyId, property.funding_goal_usdc)
+      
+      // Force UI refresh
+      setTimeout(() => {
+        fetchMarketData(propertyId)
+      }, 2000)
     }
   }
 
@@ -357,18 +394,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-openhouse-accent" />
-            Token Information
-          </CardTitle>
-        </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-openhouse-fg-muted">Token Symbol</p>
-              <p className="font-semibold text-openhouse-fg">{tokenDetails.token_symbol}</p>
-            </div>
             <div>
               <p className="text-sm text-openhouse-fg-muted">Available Shares</p>
               <p className="font-semibold text-openhouse-fg">
@@ -425,9 +452,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div>
           <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Property Information</h4>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-openhouse-fg-muted">Type</span>
@@ -445,12 +471,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 <span className="text-openhouse-fg-muted">Square Footage</span>
                 <span className="text-openhouse-fg">{propertyDetails.square_footage?.toLocaleString()} sq ft</span>
               </div>
-            </div>
-          </div>
-          
-          <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Location</h4>
-            <div className="space-y-2">
               <div>
                 <span className="text-openhouse-fg-muted block">Address</span>
                 <span className="text-openhouse-fg">{propertyDetails.full_address}</span>
@@ -506,9 +526,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div>
           <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Property Value</h4>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-openhouse-fg-muted">Property Value</span>
@@ -518,32 +537,18 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 <span className="text-openhouse-fg-muted">Price Per Share</span>
                 <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.price_per_share)}</span>
               </div>
-            </div>
-          </div>
-          
-          <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Income & Returns</h4>
-            <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Monthly Income</span>
-                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.monthly_income)}</span>
+                <span className="text-openhouse-fg-muted">Net Operating Income</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.net_operating_income)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Annual Yield</span>
-                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_yield_pct)}</span>
+                <span className="text-openhouse-fg-muted">Expense Ratio</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.expense_ratio * 100)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Annual Return</span>
-                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_return)}</span>
+                <span className="text-openhouse-fg-muted">Vacancy Rate</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.vacancy_rate * 100)}</span>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Performance Metrics</h4>
-            <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-openhouse-fg-muted">Cap Rate</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cap_rate)}</span>
@@ -556,23 +561,17 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 <span className="text-openhouse-fg-muted">Cash on Cash</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cash_on_cash)}</span>
               </div>
-            </div>
-          </div>
-          
-          <div>
-            <h4 className="font-semibold text-openhouse-fg mb-3">Operating Details</h4>
-            <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Net Operating Income</span>
-                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.net_operating_income)}</span>
+                <span className="text-openhouse-fg-muted">Monthly Income</span>
+                <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.monthly_income)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Expense Ratio</span>
-                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.expense_ratio * 100)}</span>
+                <span className="text-openhouse-fg-muted">Annual Yield</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_yield_pct)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-openhouse-fg-muted">Vacancy Rate</span>
-                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.vacancy_rate * 100)}</span>
+                <span className="text-openhouse-fg-muted">Annual Return</span>
+                <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_return)}</span>
               </div>
             </div>
           </div>
@@ -715,7 +714,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
+          {/* Main Content - Property Image Only */}
           <div className="lg:col-span-2 space-y-6">
             {/* Property Image */}
             <Card>
@@ -739,51 +738,30 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 </div>
               </CardContent>
             </Card>
-
-            {/* Tabbed Content */}
-            <Card>
-              <CardHeader>
-                <div className="flex space-x-1 bg-openhouse-bg-muted rounded-lg p-1">
-                  {(['details', 'financials', 'activity'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                        activeTab === tab
-                          ? 'bg-openhouse-bg text-openhouse-fg shadow-sm'
-                          : 'text-openhouse-fg-muted hover:text-openhouse-fg'
-                      }`}
-                    >
-                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {activeTab === 'details' && renderDetailsTab()}
-                {activeTab === 'financials' && renderFinancialsTab()}
-                {activeTab === 'activity' && renderActivityTab()}
-              </CardContent>
-            </Card>
           </div>
 
-          {/* Sidebar */}
+          {/* Right Sidebar - Property Details + Tabs */}
           <div className="lg:col-span-1 space-y-6">
             {/* Property Header */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {isPropertyLive(property.status) ? (
+                    <div className="flex items-center gap-3">
                     <button
                       onClick={() => setIsTokenInfoModalOpen(true)}
                       className="font-heading text-2xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
                     >
                       {property.name}
                     </button>
+                    <p className="font-semibold text-openhouse-fg">{tokenDetails?.token_symbol}</p>
+                    </div>
                   ) : (
-                    <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
-                      {property.name}
-                    </h1>
+                    <div className="flex items-center gap-3">
+                      <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
+                        {property.name}
+                      </h1>
+                    </div>
                   )}
                 </div>
                 <Badge className={statusColors[property.status]} variant="outline">
@@ -870,6 +848,32 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 </CardContent>
               </Card>
             )}
+
+            {/* Tabbed Content - Now in Right Sidebar */}
+            <Card>
+              <CardHeader>
+                <div className="flex space-x-1 bg-openhouse-bg-muted rounded-lg p-1">
+                  {(['details', 'financials', 'activity'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === tab
+                          ? 'bg-openhouse-bg text-openhouse-fg shadow-sm'
+                          : 'text-openhouse-fg-muted hover:text-openhouse-fg'
+                      }`}
+                    >
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {activeTab === 'details' && renderDetailsTab()}
+                {activeTab === 'financials' && renderFinancialsTab()}
+                {activeTab === 'activity' && renderActivityTab()}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
