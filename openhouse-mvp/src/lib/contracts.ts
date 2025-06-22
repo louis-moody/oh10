@@ -714,33 +714,182 @@ export async function getUserPendingYieldForRound(
 
 
 
-// fix: OrderBookExchange ABI and utilities (Cursor Rule 4)
+// fix: OrderBookExchange ABI in JSON format for Wagmi (Cursor Rule 4)
 export const OrderBookExchangeABI = [
-  "function propertyId() view returns (uint256)",
-  "function propertyToken() view returns (address)",
-  "function usdcToken() view returns (address)",
-  "function treasury() view returns (address)",
-  "function operator() view returns (address)",
-  "function protocolFeeBasisPoints() view returns (uint256)",
-  "function nextOrderId() view returns (uint256)",
-  "function totalFeesCollected() view returns (uint256)",
-  "function createBuyOrder(uint256, uint256)",
-  "function createSellOrder(uint256, uint256)",
-  "function executeOrder(uint256, uint256)",
-  "function cancelOrder(uint256)",
-  "function getOrder(uint256) view returns (uint256, address, uint8, uint256, uint256, uint256, uint256, uint8, bool)",
-  "function getUserOrders(address) view returns (uint256[])",
-  "function getOrdersByType(uint8) view returns (uint256[])",
-  "function calculateFees(uint256) view returns (uint256, uint256, uint256)",
-  "function updateProtocolFee(uint256)",
-  "function withdrawProtocolFees(uint256)",
-  "function emergencyWithdrawAllFees()",
-  "event OrderCreated(uint256 indexed orderId, address indexed creator, uint8 indexed orderType, uint256 tokenAmount, uint256 pricePerToken, uint256 timestamp)",
-  "event OrderFilled(uint256 indexed orderId, address indexed buyer, address indexed seller, uint256 tokenAmount, uint256 pricePerToken, uint256 buyerFee, uint256 sellerFee, uint256 timestamp)",
-  "event OrderCancelled(uint256 indexed orderId, address indexed creator, uint256 remainingAmount, uint256 timestamp)",
-  "event OrderPartiallyFilled(uint256 indexed orderId, address indexed filler, uint256 filledAmount, uint256 remainingAmount, uint256 timestamp)",
-  "event FeesWithdrawn(address indexed treasury, uint256 amount, uint256 timestamp)",
-  "event ProtocolFeeUpdated(uint256 oldFeeBasisPoints, uint256 newFeeBasisPoints, uint256 timestamp)"
+  {
+    "type": "function",
+    "name": "propertyId",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "propertyToken",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address", "internalType": "address"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "usdcToken",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address", "internalType": "address"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "treasury",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address", "internalType": "address"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "operator",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address", "internalType": "address"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "protocolFeeBasisPoints",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nextOrderId",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalFeesCollected",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "uint256", "internalType": "uint256"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createBuyOrder",
+    "inputs": [
+      {"name": "tokenAmount", "type": "uint256", "internalType": "uint256"},
+      {"name": "pricePerToken", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createSellOrder",
+    "inputs": [
+      {"name": "tokenAmount", "type": "uint256", "internalType": "uint256"},
+      {"name": "pricePerToken", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeOrder",
+    "inputs": [
+      {"name": "orderId", "type": "uint256", "internalType": "uint256"},
+      {"name": "fillAmount", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelOrder",
+    "inputs": [
+      {"name": "orderId", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getOrder",
+    "inputs": [
+      {"name": "orderId", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "address", "internalType": "address"},
+      {"name": "", "type": "uint8", "internalType": "uint8"},
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint8", "internalType": "uint8"},
+      {"name": "", "type": "bool", "internalType": "bool"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getUserOrders",
+    "inputs": [
+      {"name": "user", "type": "address", "internalType": "address"}
+    ],
+    "outputs": [
+      {"name": "", "type": "uint256[]", "internalType": "uint256[]"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getOrdersByType",
+    "inputs": [
+      {"name": "orderType", "type": "uint8", "internalType": "uint8"}
+    ],
+    "outputs": [
+      {"name": "", "type": "uint256[]", "internalType": "uint256[]"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "calculateFees",
+    "inputs": [
+      {"name": "tradeValue", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint256", "internalType": "uint256"},
+      {"name": "", "type": "uint256", "internalType": "uint256"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "updateProtocolFee",
+    "inputs": [
+      {"name": "newFeeBasisPoints", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawProtocolFees",
+    "inputs": [
+      {"name": "amount", "type": "uint256", "internalType": "uint256"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "emergencyWithdrawAllFees",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  }
 ] as const;
 
 // fix: USDC token ABI for Base network (Cursor Rule 4)

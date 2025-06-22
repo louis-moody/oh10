@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Contract address mismatch' }, { status: 400 })
     }
 
-    // fix: insert order into order_book table (Cursor Rule 4)
+    // fix: insert order into order_book table with contract ID mapping (Cursor Rule 4)
     const orderData = {
       property_id,
       order_type,
@@ -77,9 +77,39 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString()
     }
 
+    // fix: get contract order ID from transaction logs (Cursor Rule 4)
+    let contractOrderId: number | null = null
+    try {
+      // Parse transaction logs to get the OrderCreated event
+      const ethers = require('ethers')
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL)
+      const receipt = await provider.getTransactionReceipt(transaction_hash)
+      
+      if (receipt && receipt.logs) {
+        // fix: OrderCreated event signature: OrderCreated(uint256 indexed orderId, address indexed creator, uint8 indexed orderType, uint256 tokenAmount, uint256 pricePerToken, uint256 timestamp)
+        const orderCreatedTopic = ethers.id('OrderCreated(uint256,address,uint8,uint256,uint256,uint256)')
+        const orderLog = receipt.logs.find((log: any) => 
+          log.address.toLowerCase() === contract_address.toLowerCase() &&
+          log.topics[0] === orderCreatedTopic
+        )
+        
+        if (orderLog && orderLog.topics[1]) {
+          // Extract order ID from indexed parameter (uint256)
+          contractOrderId = parseInt(orderLog.topics[1], 16)
+        }
+      }
+    } catch (error) {
+      console.warn('Could not extract contract order ID from logs:', error)
+    }
+
+    // fix: add contract_order_id to database record (Cursor Rule 4)
+    const finalOrderData = contractOrderId 
+      ? { ...orderData, contract_order_id: contractOrderId }
+      : orderData
+
     const { data: orderRecord, error: insertError } = await supabaseAdmin
       .from('order_book')
-      .insert(orderData)
+      .insert(finalOrderData)
       .select()
       .single()
 
@@ -88,7 +118,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to record order' }, { status: 500 })
     }
 
-    console.log('✅ Order recorded successfully:', orderRecord.id)
+    console.log('✅ Order recorded successfully:', orderRecord.id, 'Contract ID:', contractOrderId)
 
     // fix: activity recording removed - using order_book table as source of truth (Cursor Rule 4)
     console.log('✅ Order recorded in order_book table - activity will be shown from there')

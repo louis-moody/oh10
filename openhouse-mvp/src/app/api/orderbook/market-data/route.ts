@@ -16,9 +16,9 @@ export async function GET(req: NextRequest) {
     }
 
     // fix: fetch active sell orders (asks) sorted by price (Cursor Rule 4)
-    const { data: sellOrders } = await supabaseAdmin
+    const { data: sellOrders, error: sellError } = await supabaseAdmin
       .from('order_book')
-      .select('shares_remaining, price_per_share, user_address, created_at')
+      .select('id, shares_remaining, price_per_share, user_address, created_at, status, contract_order_id')
       .eq('property_id', propertyId)
       .eq('order_type', 'sell')
       .eq('status', 'open')
@@ -27,9 +27,9 @@ export async function GET(req: NextRequest) {
       .limit(50) // Top 50 asks
 
     // fix: fetch active buy orders (bids) sorted by price (Cursor Rule 4)  
-    const { data: buyOrders } = await supabaseAdmin
+    const { data: buyOrders, error: buyError } = await supabaseAdmin
       .from('order_book')
-      .select('shares_remaining, price_per_share, user_address, created_at')
+      .select('id, shares_remaining, price_per_share, user_address, created_at, status, contract_order_id')
       .eq('property_id', propertyId)
       .eq('order_type', 'buy')
       .eq('status', 'open')
@@ -68,15 +68,27 @@ export async function GET(req: NextRequest) {
         buy_orders: buyOrders?.length || 0
       },
       sell_orders: sellOrders?.map(order => ({
+        order_id: order.id,
+        id: order.id,
         price: order.price_per_share,
         shares: order.shares_remaining,
+        shares_remaining: order.shares_remaining,
+        contract_order_id: order.contract_order_id,
+        status: order.status,
         user: order.user_address.slice(0, 6) + '...' + order.user_address.slice(-4), // Anonymize
+        user_address: order.user_address, // Keep full address for trading
         age: Math.floor((new Date().getTime() - new Date(order.created_at).getTime()) / (1000 * 60)) // minutes
       })) || [],
       buy_orders: buyOrders?.map(order => ({
+        order_id: order.id,
+        id: order.id,
         price: order.price_per_share,
         shares: order.shares_remaining,
+        shares_remaining: order.shares_remaining,
+        contract_order_id: order.contract_order_id,
+        status: order.status,
         user: order.user_address.slice(0, 6) + '...' + order.user_address.slice(-4), // Anonymize
+        user_address: order.user_address, // Keep full address for trading
         age: Math.floor((new Date().getTime() - new Date(order.created_at).getTime()) / (1000 * 60)) // minutes
       })) || [],
       recent_activity: recentTrades?.map(trade => ({
