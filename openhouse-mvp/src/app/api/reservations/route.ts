@@ -19,7 +19,7 @@ function getUSDCContractAddress(): string {
 }
 
 // fix: get operator address for USDC approvals - derive from private key for consistency (Cursor Rule 4)
-function getOperatorAddress(): string {
+async function getOperatorAddress(): Promise<string> {
   const privateKey = process.env.OPERATOR_PRIVATE_KEY
   if (!privateKey) {
     throw new Error('OPERATOR_PRIVATE_KEY not configured')
@@ -27,21 +27,15 @@ function getOperatorAddress(): string {
   
   try {
     // fix: derive address from private key to ensure frontend/backend consistency (Cursor Rule 4)
-    const { privateKeyToAccount } = require('viem/accounts')
+    const { privateKeyToAccount } = await import('viem/accounts')
     const account = privateKeyToAccount(privateKey as `0x${string}`)
     return account.address
-  } catch (error) {
+  } catch {
     throw new Error('Failed to derive operator address from private key')
   }
 }
 
-function getTreasuryAddress(): string {
-  const address = process.env.NEXT_PUBLIC_TREASURY_ADDRESS
-  if (!address || !isAddress(address)) {
-    throw new Error('Treasury address not configured or invalid')
-  }
-  return address
-}
+
 
 // fix: verify USDC approval on-chain before accepting reservation (Cursor Rule 4)
 async function verifyUSDCApproval(
@@ -56,7 +50,7 @@ async function verifyUSDCApproval(
     })
 
     const usdcAddress = getUSDCContractAddress()
-    const operatorAddress = getOperatorAddress()
+    const operatorAddress = await getOperatorAddress()
 
     // fix: get transaction receipt to verify it exists and succeeded (Cursor Rule 4)
     const receipt = await publicClient.getTransactionReceipt({ 
@@ -101,7 +95,7 @@ async function verifyUSDCApproval(
             return { isValid: true }
           }
         }
-      } catch (decodeError) {
+      } catch {
         // fix: continue checking other logs if one fails to decode (Cursor Rule 6)
         continue
       }

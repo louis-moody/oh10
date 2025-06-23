@@ -52,8 +52,7 @@ export function ProfileCompleteModal({ isOpen, onComplete, walletAddress }: Prof
         email: email.trim(),
         marketingConsent
       })
-    } catch (error) {
-
+    } catch {
       // Handle error - could show toast notification
     } finally {
       setIsSubmitting(false)

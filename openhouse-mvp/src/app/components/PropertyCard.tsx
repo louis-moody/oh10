@@ -5,7 +5,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Card, CardContent, CardHeader } from './ui/card'
 import { Badge } from './ui/badge'
-import { Button } from './ui/button'
 import type { PropertyWithProgress } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
 import { useAccount } from 'wagmi'
@@ -148,7 +147,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
     } finally {
       setIsLoadingStats(false)
     }
-  }, [id, status, address, isConnected])
+  }, [id, status, address, isConnected, price_per_token])
 
   // fix: fetch completed property stats from database and contracts (Cursor Rule 4)
   useEffect(() => {

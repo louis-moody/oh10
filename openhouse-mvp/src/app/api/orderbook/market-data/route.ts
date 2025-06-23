@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     }
 
     // fix: fetch active sell orders (asks) sorted by price (Cursor Rule 4)
-    const { data: sellOrders, error: sellError } = await supabaseAdmin
+    const { data: sellOrders } = await supabaseAdmin
       .from('order_book')
       .select('id, shares_remaining, price_per_share, user_address, created_at, status, contract_order_id')
       .eq('property_id', propertyId)
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       .limit(50) // Top 50 asks
 
     // fix: fetch active buy orders (bids) sorted by price (Cursor Rule 4)  
-    const { data: buyOrders, error: buyError } = await supabaseAdmin
+    const { data: buyOrders } = await supabaseAdmin
       .from('order_book')
       .select('id, shares_remaining, price_per_share, user_address, created_at, status, contract_order_id')
       .eq('property_id', propertyId)

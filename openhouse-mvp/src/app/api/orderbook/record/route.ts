@@ -81,14 +81,14 @@ export async function POST(req: NextRequest) {
     let contractOrderId: number | null = null
     try {
       // Parse transaction logs to get the OrderCreated event
-      const ethers = require('ethers')
+      const ethers = await import('ethers')
       const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL)
       const receipt = await provider.getTransactionReceipt(transaction_hash)
       
       if (receipt && receipt.logs) {
         // fix: OrderCreated event signature: OrderCreated(uint256 indexed orderId, address indexed creator, uint8 indexed orderType, uint256 tokenAmount, uint256 pricePerToken, uint256 timestamp)
         const orderCreatedTopic = ethers.id('OrderCreated(uint256,address,uint8,uint256,uint256,uint256)')
-        const orderLog = receipt.logs.find((log: any) => 
+        const orderLog = receipt.logs.find((log) => 
           log.address.toLowerCase() === contract_address.toLowerCase() &&
           log.topics[0] === orderCreatedTopic
         )

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
-import { createWalletClient, http, parseUnits, formatUnits, parseEther } from 'viem'
+import { createWalletClient, http, parseUnits } from 'viem'
 import { base, baseSepolia } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
 

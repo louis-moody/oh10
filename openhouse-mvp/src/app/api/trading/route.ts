@@ -59,20 +59,17 @@ export async function POST(req: NextRequest) {
     // fix: calculate shares and amounts at FIXED OpenHouse price (Cursor Rule 1)
     const openHousePrice = property.price_per_token
     let shares: number
-    let totalUsdcAmount: number
 
     if (trade_type === 'buy') {
       if (!usdc_amount || usdc_amount <= 0) {
         return NextResponse.json({ error: 'USDC amount required for buy orders' }, { status: 400 })
       }
       shares = usdc_amount / openHousePrice
-      totalUsdcAmount = usdc_amount
     } else {
       if (!shares_to_sell || shares_to_sell <= 0) {
         return NextResponse.json({ error: 'Share amount required for sell orders' }, { status: 400 })
       }
       shares = shares_to_sell
-      totalUsdcAmount = shares * openHousePrice
     }
 
     // STEP 1: Try to match with existing orders first
@@ -123,10 +120,10 @@ async function executeOrderMatch(params: {
   trade_type: 'buy' | 'sell'
   shares: number
   price_per_token: number
-  matching_order: any
-  propertyDetails: any
+  matching_order: { id: string; token_amount: number; filled_amount: number; price_per_token: number }
+  propertyDetails: { orderbook_contract_address: string }
 }) {
-  const { user_wallet, property_id, trade_type, shares, price_per_token, matching_order, propertyDetails } = params
+  const { trade_type, shares, matching_order, propertyDetails } = params
 
   try {
     // Return execution instructions for frontend
@@ -161,9 +158,9 @@ async function placeOrderOnChain(params: {
   trade_type: 'buy' | 'sell'
   shares: number
   price_per_token: number
-  propertyDetails: any
+  propertyDetails: { orderbook_contract_address: string }
 }) {
-  const { user_wallet, property_id, trade_type, shares, price_per_token, propertyDetails } = params
+  const { trade_type, shares, price_per_token, propertyDetails } = params
 
   try {
     // fix: DIRECT WALLET TRANSACTION - NO PRE-VALIDATION (Cursor Rule 1)

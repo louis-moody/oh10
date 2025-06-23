@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { SiweMessage } from 'siwe'
 import { Button } from './ui/button'
 import {
@@ -10,9 +10,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from './ui/dialog'
-import { Wallet, LogOut, Loader2 } from 'lucide-react'
+import { Wallet, LogOut } from 'lucide-react'
 import type { Connector } from 'wagmi'
 import { Badge } from './ui/badge'
 
@@ -40,7 +39,6 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   const { connectors, connect } = useConnect()
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
-  const chainId = useChainId()
 
   // fix: prevent hydration mismatch (Cursor Rule 6)
   useEffect(() => {
@@ -200,7 +198,7 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
 
       disconnect()
       onAuthSuccess?.('')
-    } catch (error) {
+    } catch {
       // fix: still disconnect wallet even if API fails (Cursor Rule 6)
       disconnect()
     }
