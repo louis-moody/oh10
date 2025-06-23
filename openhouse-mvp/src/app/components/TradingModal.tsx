@@ -710,27 +710,54 @@ export function TradingModal({
         ? parseFloat(usdcAmount) / property.price_per_token
         : parseFloat(shareAmount)
 
-      const orderData = {
-        property_id: property.id,
-        order_type: activeTab,
-        user_address: address,
-        shares: shares,
-        price_per_share: property.price_per_token,
-        transaction_hash: transactionHash,
-        contract_address: property.orderbook_contract_address
-      }
+      // fix: handle order execution vs order creation differently (Cursor Rule 4)
+      if (wasExecutedInstantly && activeTab === 'buy') {
+        // This was an executeOrder transaction - mark sell orders as filled
+        console.log('🔄 TRADING MODAL: Recording order execution and updating filled orders...')
+        
+        const response = await fetch('/api/orderbook/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            property_id: property.id,
+            transaction_hash: transactionHash,
+            buyer_address: address,
+            shares_bought: shares,
+            price_per_share: property.price_per_token,
+            contract_address: property.orderbook_contract_address
+          })
+        })
 
-      const response = await fetch('/api/orderbook/record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(orderData)
-      })
-
-      if (response.ok) {
-        console.log('✅ TRADING MODAL: Transaction recorded successfully')
+        if (response.ok) {
+          console.log('✅ TRADING MODAL: Order execution recorded and sell orders updated')
+        } else {
+          console.error('❌ TRADING MODAL: Failed to record order execution')
+        }
       } else {
-        console.error('❌ TRADING MODAL: Failed to record transaction')
+        // This was a new order creation
+        const orderData = {
+          property_id: property.id,
+          order_type: activeTab,
+          user_address: address,
+          shares: shares,
+          price_per_share: property.price_per_token,
+          transaction_hash: transactionHash,
+          contract_address: property.orderbook_contract_address
+        }
+
+        const response = await fetch('/api/orderbook/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(orderData)
+        })
+
+        if (response.ok) {
+          console.log('✅ TRADING MODAL: New order recorded successfully')
+        } else {
+          console.error('❌ TRADING MODAL: Failed to record new order')
+        }
       }
     } catch (error) {
       console.error('❌ TRADING MODAL: Recording error:', error)
