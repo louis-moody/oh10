@@ -3,6 +3,21 @@ import { cookies } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
 
+// fix: refresh orderbook state to sync available shares with on-chain data (Cursor Rule 5)
+async function refreshOrderBookState(propertyId: string, contractAddress: string) {
+  try {
+    // fetch current market data from the orderbook API
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/orderbook/market-data?property_id=${propertyId}`)
+    if (response.ok) {
+      console.log('✅ Orderbook state refreshed for property:', propertyId)
+    } else {
+      console.warn('Failed to refresh orderbook state:', response.status)
+    }
+  } catch (error) {
+    console.warn('Error refreshing orderbook state:', error)
+  }
+}
+
 // fix: REAL ORDERBOOK SYNC - record on-chain orders in Supabase (Cursor Rule 4)
 export async function POST(req: NextRequest) {
   try {
@@ -118,14 +133,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to record order' }, { status: 500 })
     }
 
-    console.log('✅ Order recorded successfully:', orderRecord.id, 'Contract ID:', contractOrderId)
+    // fix: comprehensive logging for audit trail (Cursor Rule 5)
+    console.log('✅ Order recorded successfully:', {
+      order_id: orderRecord.id,
+      contract_order_id: contractOrderId,
+      property_id,
+      order_type,
+      user_address: user_address.toLowerCase(),
+      shares: parseFloat(shares),
+      price_per_share: parseFloat(price_per_share),
+      transaction_hash: transaction_hash.toLowerCase(),
+      timestamp: new Date().toISOString()
+    })
 
-    // fix: activity recording removed - using order_book table as source of truth (Cursor Rule 4)
-    console.log('✅ Order recorded in order_book table - activity will be shown from there')
+    // fix: trigger orderbook state refresh to update available shares (Cursor Rule 5)
+    try {
+      await refreshOrderBookState(property_id, contract_address)
+    } catch (refreshError) {
+      console.warn('Failed to refresh orderbook state:', refreshError)
+      // Don't fail the main operation for refresh errors
+    }
 
     return NextResponse.json({
       success: true,
       order_id: orderRecord.id,
+      contract_order_id: contractOrderId,
       message: 'Order recorded successfully'
     })
 

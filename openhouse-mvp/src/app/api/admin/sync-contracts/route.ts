@@ -10,15 +10,49 @@ export async function POST() {
 
     console.log('🔄 Starting Supabase contract sync...')
 
+    // fix: get contract addresses from property_token_details - single source of truth (Cursor Rule 4)
+    const PROPERTY_ID = '795d70a0-7807-4d73-be93-b19050e9dec8'
+    
+    const { data: tokenDetails, error: fetchError } = await supabaseAdmin
+      .from('property_token_details')
+      .select('contract_address, orderbook_contract_address')
+      .eq('property_id', PROPERTY_ID)
+      .single()
+
+    if (fetchError || !tokenDetails) {
+      return NextResponse.json({ 
+        error: 'Contract addresses not found in property_token_details',
+        details: fetchError 
+      }, { status: 404 })
+    }
+
+    const PROPERTY_TOKEN_ADDRESS = tokenDetails.contract_address
+    const ORDERBOOK_ADDRESS = tokenDetails.orderbook_contract_address
+
+    if (!PROPERTY_TOKEN_ADDRESS || !ORDERBOOK_ADDRESS) {
+      return NextResponse.json({ 
+        error: 'Incomplete contract addresses in property_token_details',
+        missing: {
+          token: !PROPERTY_TOKEN_ADDRESS,
+          orderbook: !ORDERBOOK_ADDRESS
+        }
+      }, { status: 400 })
+    }
+
+    console.log('✅ Using contract addresses from Supabase:', {
+      token: PROPERTY_TOKEN_ADDRESS,
+      orderbook: ORDERBOOK_ADDRESS
+    })
+
     // 1. UPDATE PROPERTIES TABLE
     const { error: propertiesError } = await supabaseAdmin
       .from('properties')
       .update({
-        orderbook_contract_address: '0xf6E6439707Ed80D141DE2cb05f6E6c04F28de2c3',
-        token_contract_address: '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F',
+        orderbook_contract_address: ORDERBOOK_ADDRESS,
+        token_contract_address: PROPERTY_TOKEN_ADDRESS,
         status: 'completed'
       })
-      .eq('id', '795d70a0-7807-4d73-be93-b19050e9dec8')
+      .eq('id', PROPERTY_ID)
 
     if (propertiesError) {
       console.error('❌ Properties table update failed:', propertiesError)
@@ -27,12 +61,10 @@ export async function POST() {
 
     console.log('✅ Properties table updated')
 
-    // 2. UPDATE PROPERTY_TOKEN_DETAILS TABLE
+    // 2. UPDATE PROPERTY_TOKEN_DETAILS TABLE (refresh metadata only)
     const { error: tokenDetailsError } = await supabaseAdmin
       .from('property_token_details')
       .update({
-        contract_address: '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F',
-        orderbook_contract_address: '0xf6E6439707Ed80D141DE2cb05f6E6c04F28de2c3',
         total_shares: 50,
         price_per_token: 1,
         total_supply: 50,
@@ -42,7 +74,7 @@ export async function POST() {
         price_source: 'openhouse',
         updated_at: new Date().toISOString()
       })
-      .eq('property_id', '795d70a0-7807-4d73-be93-b19050e9dec8')
+      .eq('property_id', PROPERTY_ID)
 
     if (tokenDetailsError) {
       console.error('❌ Property token details update failed:', tokenDetailsError)
@@ -55,8 +87,8 @@ export async function POST() {
     const { error: clearOrdersError } = await supabaseAdmin
       .from('order_book')
       .delete()
-      .eq('property_id', '795d70a0-7807-4d73-be93-b19050e9dec8')
-      .neq('contract_address', '0xf6E6439707Ed80D141DE2cb05f6E6c04F28de2c3')
+      .eq('property_id', PROPERTY_ID)
+      .neq('contract_address', ORDERBOOK_ADDRESS)
 
     if (clearOrdersError) {
       console.error('❌ Clear stale orders failed:', clearOrdersError)
@@ -69,13 +101,13 @@ export async function POST() {
     const { data: finalProperties, error: verifyPropertiesError } = await supabaseAdmin
       .from('properties')
       .select('id, name, token_contract_address, orderbook_contract_address, status, total_shares, price_per_token')
-      .eq('id', '795d70a0-7807-4d73-be93-b19050e9dec8')
+      .eq('id', PROPERTY_ID)
       .single()
 
     const { data: finalTokenDetails, error: verifyTokenError } = await supabaseAdmin
       .from('property_token_details')
       .select('property_id, contract_address, orderbook_contract_address, token_name, token_symbol, total_shares, price_per_token, total_supply, available_shares')
-      .eq('property_id', '795d70a0-7807-4d73-be93-b19050e9dec8')
+      .eq('property_id', PROPERTY_ID)
       .single()
 
     if (verifyPropertiesError || verifyTokenError) {
@@ -96,9 +128,9 @@ export async function POST() {
         property_token_details: finalTokenDetails
       },
       contract_addresses: {
-        property_share_token: '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F',
-        orderbook_exchange: '0xf6E6439707Ed80D141DE2cb05f6E6c04F28de2c3',
-        usdc_token: '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+        property_share_token: PROPERTY_TOKEN_ADDRESS,
+        orderbook_exchange: ORDERBOOK_ADDRESS,
+        usdc_token: process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
       },
       network: 'Base Sepolia',
       property_id: '795d70a0-7807-4d73-be93-b19050e9dec8'

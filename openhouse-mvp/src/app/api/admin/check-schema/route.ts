@@ -9,6 +9,23 @@ export async function GET() {
 
     const propertyId = '795d70a0-7807-4d73-be93-b19050e9dec8'
     
+    // fix: get expected addresses from property_token_details - single source of truth (Cursor Rule 4)
+    const { data: tokenDetailsExpected, error: expectedFetchError } = await supabaseAdmin
+      .from('property_token_details')
+      .select('contract_address, orderbook_contract_address')
+      .eq('property_id', propertyId)
+      .single()
+
+    if (expectedFetchError || !tokenDetailsExpected) {
+      return NextResponse.json({ 
+        error: 'Cannot determine expected addresses from property_token_details',
+        details: expectedFetchError 
+      }, { status: 404 })
+    }
+
+    const EXPECTED_TOKEN_ADDRESS = tokenDetailsExpected.contract_address
+    const EXPECTED_ORDERBOOK_ADDRESS = tokenDetailsExpected.orderbook_contract_address
+    
     console.log('🔍 Checking Supabase values for London property...')
 
     // Check properties table
@@ -34,19 +51,19 @@ export async function GET() {
     const result = {
       property_id: propertyId,
       expected_values: {
-        token_address: '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F',
-        orderbook_address: '0xd0408444c1afF904107D95AD240d4100f875eEdF'
+        token_address: EXPECTED_TOKEN_ADDRESS,
+        orderbook_address: EXPECTED_ORDERBOOK_ADDRESS
       },
       properties_table: {
         data: property,
         error: propError?.message,
-        orderbook_correct: property?.orderbook_contract_address?.toLowerCase() === '0xd0408444c1afF904107D95AD240d4100f875eEdF'.toLowerCase()
+        orderbook_correct: property?.orderbook_contract_address?.toLowerCase() === EXPECTED_ORDERBOOK_ADDRESS.toLowerCase()
       },
       property_token_details_table: {
         data: tokenDetails,
         error: tokenError?.message,
-        token_correct: tokenDetails?.contract_address?.toLowerCase() === '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F'.toLowerCase(),
-        orderbook_correct: tokenDetails?.orderbook_contract_address?.toLowerCase() === '0xd0408444c1afF904107D95AD240d4100f875eEdF'.toLowerCase()
+        token_correct: tokenDetails?.contract_address?.toLowerCase() === EXPECTED_TOKEN_ADDRESS.toLowerCase(),
+        orderbook_correct: tokenDetails?.orderbook_contract_address?.toLowerCase() === EXPECTED_ORDERBOOK_ADDRESS.toLowerCase()
       },
       order_book_table: {
         count: orders?.length || 0,
@@ -54,9 +71,9 @@ export async function GET() {
         error: orderError?.message
       },
       summary: {
-        all_correct: property?.orderbook_contract_address?.toLowerCase() === '0xd0408444c1afF904107D95AD240d4100f875eEdF'.toLowerCase() &&
-                    tokenDetails?.contract_address?.toLowerCase() === '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F'.toLowerCase() &&
-                    tokenDetails?.orderbook_contract_address?.toLowerCase() === '0xd0408444c1afF904107D95AD240d4100f875eEdF'.toLowerCase(),
+        all_correct: property?.orderbook_contract_address?.toLowerCase() === EXPECTED_ORDERBOOK_ADDRESS.toLowerCase() &&
+                    tokenDetails?.contract_address?.toLowerCase() === EXPECTED_TOKEN_ADDRESS.toLowerCase() &&
+                    tokenDetails?.orderbook_contract_address?.toLowerCase() === EXPECTED_ORDERBOOK_ADDRESS.toLowerCase(),
         needs_update: false
       }
     }

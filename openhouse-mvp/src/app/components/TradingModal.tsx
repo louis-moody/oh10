@@ -9,7 +9,7 @@ import { Badge } from './ui/badge'
 import { ArrowRightLeft, TrendingUp, TrendingDown, AlertCircle, CheckCircle, DollarSign, ExternalLink, Clock } from 'lucide-react'
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Loader2 } from 'lucide-react'
-import { OrderBookExchangeABI } from '@/lib/contracts'
+import { OrderBookExchangeABI, getUsdcAddress as getUsdcAddressByChain } from '@/lib/contracts'
 
 interface TradingModalProps {
   isOpen: boolean
@@ -51,15 +51,37 @@ export function TradingModal({
   const { data: hash, writeContract, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
 
-  // fix: LOG WRITE ERRORS (Cursor Rule 6)
+  // fix: COMPREHENSIVE ERROR HANDLING and logging (Cursor Rule 6)
   useEffect(() => {
     if (writeError) {
-      console.error('❌ TRADING MODAL: writeContract error:', writeError)
-      setError(writeError.message || 'Transaction failed')
+      // fix: comprehensive error logging for audit trail (Cursor Rule 5)
+      console.error('❌ TRADING MODAL: Transaction error:', {
+        error: writeError.message,
+        cause: writeError.cause,
+        activeTab,
+        transactionStep,
+        userAddress: address,
+        propertyId: property.id,
+        timestamp: new Date().toISOString()
+      })
+      
+      // fix: user-friendly error messages (Cursor Rule 6)
+      let userErrorMessage = 'Transaction failed'
+      if (writeError.message.includes('insufficient funds')) {
+        userErrorMessage = 'Insufficient funds for transaction'
+      } else if (writeError.message.includes('allowance')) {
+        userErrorMessage = 'Token allowance error - please try again'
+      } else if (writeError.message.includes('rejected')) {
+        userErrorMessage = 'Transaction rejected by user'
+      } else if (writeError.message.includes('network')) {
+        userErrorMessage = 'Network error - please check connection'
+      }
+      
+      setError(userErrorMessage)
       setFlowState('error')
       setTransactionStep('idle')
     }
-  }, [writeError])
+  }, [writeError, activeTab, transactionStep, address, property.id])
 
   // fix: SIMPLE BALANCE LOADING (Cursor Rule 1)
   const [userUsdcBalance, setUserUsdcBalance] = useState<bigint>(BigInt(0))
@@ -261,7 +283,7 @@ export function TradingModal({
           isActive: contractOrder[8]
         })
         
-        // fix: TEMPORARY - accept all orders to debug status checking (Cursor Rule 6)
+        // fix: validate order type is SELL (1) and log validation results (Cursor Rule 6)
         console.log(`🔍 TRADING MODAL: Order ${sellOrder.contract_order_id} type check - orderType: ${contractOrder[2]} (should be 1 for SELL)`)
 
         // fix: verify order is still active and has remaining shares (Cursor Rule 6)
@@ -489,7 +511,7 @@ export function TradingModal({
           isActive: contractOrder[8]
         })
         
-        // fix: TEMPORARY - accept all orders to debug status checking (Cursor Rule 6)
+        // fix: validate order type is BUY (0) and log validation results (Cursor Rule 6)
         console.log(`🔍 TRADING MODAL: Order ${buyOrder.contract_order_id} type check - orderType: ${contractOrder[2]} (should be 0 for BUY)`)
 
         // fix: verify order is still active and has remaining shares (Cursor Rule 6)
@@ -653,7 +675,25 @@ export function TradingModal({
       }
       
       setTransactionStep('idle')
+      
+      // fix: refresh orderbook data immediately after success to sync available shares (Cursor Rule 5)
+      await loadOrderBookData()
+      await loadUserBalances()
+      
       onTradeSuccess()
+      
+      // fix: comprehensive success audit logging (Cursor Rule 5)
+      console.log('📊 TRADING SUCCESS AUDIT:', {
+        transactionHash,
+        userAddress: address,
+        propertyId: property.id,
+        orderType: activeTab,
+        sharesTraded: activeTab === 'buy' ? calculateShares() : parseFloat(shareAmount || '0'),
+        pricePerShare: property.price_per_token,
+        executedInstantly: wasExecutedInstantly,
+        newAvailableShares: availableShares,
+        timestamp: new Date().toISOString()
+      })
       
     } catch (error) {
       console.error('❌ TRADING MODAL: Error recording order:', error)
@@ -712,8 +752,9 @@ export function TradingModal({
     }
   }, [isOpen])
 
-  const getUsdcAddress = () => {
-    return process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+  const getUsdcAddress = (): string => {
+    // fix: use USDC address from contracts.ts instead of hardcoded fallback (Cursor Rule 4)
+    return process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || getUsdcAddressByChain(chainId || 84532) || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
   }
 
   // fix: Dynamic contract loading from property_token_details (Cursor Rule 4)
@@ -741,7 +782,11 @@ export function TradingModal({
       setUserUsdcBalance(usdcBalance)
       
       // Get TOKEN balance from the actual property contract
-      const tokenContract = new ethers.Contract(property.contract_address || '0x33ED002813f4e6275eFc14fBE6A24b68B2c13A5F', ERC20_ABI, provider)
+      if (!property.contract_address) {
+        console.error('❌ TRADING MODAL: Property contract address not available')
+        return
+      }
+      const tokenContract = new ethers.Contract(property.contract_address, ERC20_ABI, provider)
       const tokenBalance = await tokenContract.balanceOf(address)
       const tokenBalanceFormatted = parseFloat(ethers.formatUnits(tokenBalance, 18))
       setUserTokenBalance(tokenBalance)

@@ -95,7 +95,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
           const yieldInfo = await getYieldDistributionInfo(
             chainId,
             tokenDetails.yield_distributor_address as `0x${string}`,
-            address as `0x${string}` || '0x0000000000000000000000000000000000000000'
+            address as `0x${string}`
           )
 
           if (yieldInfo) {
