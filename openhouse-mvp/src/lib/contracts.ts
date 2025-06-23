@@ -193,7 +193,8 @@ export const YIELD_DISTRIBUTOR_ABI = [
       {"name": "_propertyTokenAddress", "type": "address"},
       {"name": "_usdcTokenAddress", "type": "address"},
       {"name": "_treasury", "type": "address"},
-      {"name": "_operator", "type": "address"}
+      {"name": "_operator", "type": "address"},
+      {"name": "_rentalWallet", "type": "address"}
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
@@ -230,6 +231,13 @@ export const YIELD_DISTRIBUTOR_ABI = [
     ],
     "name": "YieldClaimed",
     "type": "event"
+  },
+  {
+    "inputs": [{"name": "amount", "type": "uint256"}],
+    "name": "pullAndDistribute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
     "inputs": [{"name": "amount", "type": "uint256"}],
@@ -339,6 +347,9 @@ export const USDC_ABI = [
     "type": "function"
   }
 ] as const;
+
+// fix: ERC20 ABI alias for consistency (Cursor Rule 4)
+export const ERC20_ABI = USDC_ABI;
 
 // fix: contract addresses for Base networks (Cursor Rule 4)
 export const CONTRACT_ADDRESSES = {

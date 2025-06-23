@@ -15,6 +15,8 @@
     "contracts:deploy:sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
     "contracts:deploy:mainnet": "hardhat run scripts/deploy.ts --network baseMainnet",
     "contracts:deploy-yield:sepolia": "hardhat run scripts/deploy-yield-distributor.js --network baseSepolia",
+    "contracts:approve-rental": "node scripts/approve-rental-wallet.js",
+    "contracts:verify-live": "node scripts/verify-contracts-live.js",
     "contracts:deploy-yield:mainnet": "hardhat run scripts/deploy-yield-distributor.js --network baseMainnet",
     "admin:finalize-funding:sepolia": "hardhat run scripts/admin-finalize-funding.js --network baseSepolia",
     "admin:finalize-funding:mainnet": "hardhat run scripts/admin-finalize-funding.js --network baseMainnet"

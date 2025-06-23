@@ -106,11 +106,6 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <p className="text-openhouse-fg-muted text-lg">
-          Build your legacy
-        </p>
-      </div>
 
       {properties.length === 0 ? (
         <EmptyState />

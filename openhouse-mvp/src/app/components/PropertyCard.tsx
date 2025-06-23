@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from './ui/card'
 import { Badge } from './ui/badge'
 import type { PropertyWithProgress } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
-import { useAccount } from 'wagmi'
+import { useAccount, useChainId } from 'wagmi'
 import { getYieldDistributionInfo } from '@/lib/contracts'
 
 interface PropertyCardProps {
@@ -39,6 +39,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
   const [completedStats, setCompletedStats] = useState<CompletedPropertyStats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const { address, isConnected } = useAccount()
+  const chainId = useChainId()
 
   const statusColors = {
     active: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
@@ -50,6 +51,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
   const fetchCompletedPropertyStats = useCallback(async () => {
     if (!supabase) return
     
+    console.log(`[PropertyCard] Fetching stats for property ${id}, status: ${status}`)
     setIsLoadingStats(true)
     try {
       // fix: fetch property token details with contract addresses (Cursor Rule 4)
@@ -64,6 +66,8 @@ export function PropertyCard({ property }: PropertyCardProps) {
         return
       }
 
+      console.log(`[PropertyCard] Token details:`, tokenDetails)
+
       const stats: CompletedPropertyStats = {
         pricePerToken: price_per_token, // fallback to initial price
         rentalIncomeToDate: 0,
@@ -72,32 +76,35 @@ export function PropertyCard({ property }: PropertyCardProps) {
       }
 
       // fix: get last trade price from transactions table (Cursor Rule 4)
+      // Note: transactions table doesn't have price_per_token column, use executed_price_usdc instead
       const { data: lastTrade } = await supabase
         .from('transactions')
-        .select('price_per_token')
+        .select('executed_price_usdc')
         .eq('property_id', id)
-        .in('transaction_type', ['sell', 'buy']) // check both buy and sell transactions
-        .not('price_per_token', 'is', null)
+        .in('type', ['sell', 'buy']) // use 'type' column instead of 'transaction_type'
+        .not('executed_price_usdc', 'is', null)
         .order('created_at', { ascending: false })
         .limit(1)
         .single()
 
-      if (lastTrade?.price_per_token) {
-        stats.pricePerToken = lastTrade.price_per_token
-        stats.lastTradePrice = lastTrade.price_per_token
+      if (lastTrade?.executed_price_usdc) {
+        stats.pricePerToken = lastTrade.executed_price_usdc
+        stats.lastTradePrice = lastTrade.executed_price_usdc
       }
 
       // fix: get rental income from yield distributor contract if available (Cursor Rule 4)
-      if (tokenDetails.yield_distributor_address) {
+      if (tokenDetails.yield_distributor_address && address) {
+        console.log(`[PropertyCard] Fetching yield data from: ${tokenDetails.yield_distributor_address}, chainId: ${chainId}, user: ${address}`)
         try {
-          // fix: detect network from environment or default to Base Sepolia for development (Cursor Rule 4)
-          const chainId = process.env.NODE_ENV === 'production' ? 8453 : 84532 // Base Mainnet : Base Sepolia
+          // fix: use actual chain ID from wagmi hook (Cursor Rule 4)
           const yieldInfo = await getYieldDistributionInfo(
             chainId,
             tokenDetails.yield_distributor_address as `0x${string}`,
             address as `0x${string}`
           )
 
+          console.log(`[PropertyCard] Yield info received:`, yieldInfo)
+          
           if (yieldInfo) {
             // fix: convert bigint to number for display (Cursor Rule 4)
             stats.rentalIncomeToDate = Number(yieldInfo.totalDistributed) / 1e6 // USDC has 6 decimals
@@ -122,32 +129,44 @@ export function PropertyCard({ property }: PropertyCardProps) {
             }
           }
         } catch (yieldError) {
-          console.error('Failed to fetch yield data:', yieldError)
+          console.error('[PropertyCard] Failed to fetch yield data:', yieldError)
         }
+      } else {
+        console.log(`[PropertyCard] Skipping yield fetch - yield_distributor_address: ${tokenDetails.yield_distributor_address}, address: ${address}`)
       }
 
       // fix: get user holdings if wallet is connected (Cursor Rule 4)
       if (isConnected && address) {
-        const { data: userHolding } = await supabase
-          .from('user_holdings')
-          .select('token_amount')
-          .eq('property_id', id)
+        // fix: first get user UUID from wallet address (Cursor Rule 4)
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id')
           .eq('wallet_address', address.toLowerCase())
           .single()
 
-        if (userHolding?.token_amount) {
-          stats.userHoldings = userHolding.token_amount
+        if (userData) {
+          const { data: userHolding } = await supabase
+            .from('user_holdings')
+            .select('shares')
+            .eq('property_id', id)
+            .eq('user_id', userData.id)
+            .single()
+
+          if (userHolding?.shares) {
+            stats.userHoldings = userHolding.shares
+          }
         }
       }
 
+      console.log(`[PropertyCard] Final stats:`, stats)
       setCompletedStats(stats)
 
     } catch (error) {
-      console.error('Failed to fetch completed property stats:', error)
+      console.error('[PropertyCard] Failed to fetch completed property stats:', error)
     } finally {
       setIsLoadingStats(false)
     }
-  }, [id, status, address, isConnected, price_per_token])
+  }, [id, status, address, isConnected, price_per_token, chainId])
 
   // fix: fetch completed property stats from database and contracts (Cursor Rule 4)
   useEffect(() => {

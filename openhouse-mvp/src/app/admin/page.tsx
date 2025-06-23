@@ -16,7 +16,7 @@ import {
   TableRow,
 } from '@/app/components/ui/table'
 import { LoadingState } from '@/app/components/LoadingState'
-import { AlertCircle, DollarSign, Rocket, CheckCircle, ExternalLink, Copy, Eye } from 'lucide-react'
+import { AlertCircle, DollarSign, Rocket, CheckCircle, ExternalLink, Copy, Eye, TrendingUp } from 'lucide-react'
 import { TokenInformationModal } from '@/app/components/TokenInformationModal'
 
 interface PropertyWithFunding {
@@ -329,6 +329,12 @@ export default function AdminDashboard() {
            !property.token_contract_address // Not yet deployed
   }
 
+  const canDistributeYield = (property: PropertyWithFunding) => {
+    // fix: enable yield distribution for completed properties with deployed tokens (Cursor Rule 4)
+    return property.status === 'completed' && 
+           property.token_contract_address // Token must be deployed
+  }
+
   // Property actions
   const handleViewTokenInfo = (property: PropertyWithFunding) => {
     setSelectedProperty(property)
@@ -428,6 +434,16 @@ export default function AdminDashboard() {
                           >
                             <Rocket className="h-4 w-4 mr-1" />
                             {isProcessing === property.id ? 'Deploying...' : 'Deploy Token'}
+                          </Button>
+                        )}
+                        {canDistributeYield(property) && (
+                          <Button
+                            size="sm"
+                            onClick={() => window.location.href = `/admin/properties/${property.id}/distribute-yield`}
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                          >
+                            <TrendingUp className="h-4 w-4 mr-1" />
+                            Distribute Yield
                           </Button>
                         )}
                         <Button

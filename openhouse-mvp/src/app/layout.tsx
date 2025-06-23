@@ -44,9 +44,19 @@ export default function RootLayout({
           <div className="min-h-screen bg-openhouse-bg">
             <header className="border-b border-openhouse-border/20 bg-openhouse-bg/80 backdrop-blur-sm sticky top-0 z-50">
               <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-                <h1 className="font-heading text-xl font-bold text-openhouse-fg">
-                  <Link href="/">OpenHouse</Link>
-                </h1>
+                <div className="flex items-center gap-8">
+                  <h1 className="font-heading text-xl font-bold text-openhouse-fg">
+                    <Link href="/">OpenHouse</Link>
+                  </h1>
+                  <nav className="hidden md:flex items-center gap-6">
+                    <Link href="/" className="text-openhouse-fg-muted hover:text-openhouse-fg transition-colors">
+                      Properties
+                    </Link>
+                    <Link href="/wallet" className="text-openhouse-fg-muted hover:text-openhouse-fg transition-colors">
+                      Wallet
+                    </Link>
+                  </nav>
+                </div>
                 <AuthenticationFlow />
               </div>
             </header>

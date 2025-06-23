@@ -35,7 +35,8 @@ async function main() {
 
   // fix: get network configuration (Cursor Rule 4)
   const network = await ethers.provider.getNetwork();
-  const networkName = network.name === "base-sepolia" ? "sepolia" : "mainnet";
+  const chainId = Number(network.chainId);
+  const networkName = chainId === 84532 ? "sepolia" : "mainnet"; // Base Sepolia = 84532, Base Mainnet = 8453
   const usdcAddress = USDC_ADDRESSES[networkName];
   
   console.log("📊 Network:", networkName);
@@ -44,16 +45,18 @@ async function main() {
   console.log("⚙️  Operator:", WALLET_ADDRESSES.OPERATOR);
   console.log("");
 
-  // fix: fetch properties with deployed PropertyShareToken contracts from Supabase (Cursor Rule 4)
+  // fix: fetch properties with deployed PropertyShareToken contracts and rental wallet addresses from Supabase (Cursor Rule 4)
   const { data: properties, error } = await supabase
     .from('property_token_details')
     .select(`
       property_id,
       contract_address,
+      rental_wallet_address,
       token_name,
       token_symbol
     `)
-    .not('contract_address', 'is', null);
+    .not('contract_address', 'is', null)
+    .not('rental_wallet_address', 'is', null);
 
   if (error) {
     console.error("❌ Error fetching properties from Supabase:", error);
@@ -74,17 +77,24 @@ async function main() {
     console.log(`   Property ID: ${property.property_id}`);
     console.log(`   Token: ${property.token_name} (${property.token_symbol})`);
     console.log(`   PropertyShareToken: ${property.contract_address}`);
+    console.log(`   Rental Wallet: ${property.rental_wallet_address}`);
 
     try {
       // fix: deploy YieldDistributor with constructor arguments from Supabase (Cursor Rule 4)
+      // Convert UUID to numeric hash for propertyId (same as PropertyShareToken deployment)
+      const propertyIdHash = property.property_id.replace(/-/g, '').split('').reduce((acc, char) => {
+        return acc + char.charCodeAt(0)
+      }, 0)
+      
       const YieldDistributorFactory = await ethers.getContractFactory("YieldDistributor");
       
       const yieldDistributor = await YieldDistributorFactory.deploy(
-        property.property_id, // Property ID as uint256
+        propertyIdHash, // Property ID as numeric hash
         property.contract_address, // PropertyShareToken address
         usdcAddress, // USDC token address for Base network
         WALLET_ADDRESSES.TREASURY, // Treasury wallet
-        WALLET_ADDRESSES.OPERATOR  // Operator wallet
+        WALLET_ADDRESSES.OPERATOR, // Operator wallet
+        property.rental_wallet_address // Rental wallet address from Supabase
       );
 
       await yieldDistributor.waitForDeployment();

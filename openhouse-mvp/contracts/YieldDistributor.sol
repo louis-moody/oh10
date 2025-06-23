@@ -22,6 +22,7 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
     // fix: role-based access control with predefined wallet addresses (Cursor Rule 3)
     address public immutable treasury;
     address public immutable operator;
+    address public immutable rentalWallet;
     
     // fix: distribution tracking for transparent yield accounting (Cursor Rule 4)
     uint256 public currentDistributionRound;
@@ -57,25 +58,29 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
      * @param _usdcTokenAddress Address of USDC token contract on Base
      * @param _treasury Treasury wallet address for protocol operations
      * @param _operator Operator wallet address for distribution functions
+     * @param _rentalWallet Rental wallet address that receives tenant payments
      */
     constructor(
         uint256 _propertyId,
         address _propertyTokenAddress,
         address _usdcTokenAddress,
         address _treasury,
-        address _operator
+        address _operator,
+        address _rentalWallet
     ) Ownable(msg.sender) {
         // fix: validate constructor parameters to prevent deployment errors (Cursor Rule 6)
         require(_propertyTokenAddress != address(0), "YieldDistributor: property token address cannot be zero");
         require(_usdcTokenAddress != address(0), "YieldDistributor: USDC token address cannot be zero");
         require(_treasury != address(0), "YieldDistributor: treasury address cannot be zero");
         require(_operator != address(0), "YieldDistributor: operator address cannot be zero");
+        require(_rentalWallet != address(0), "YieldDistributor: rental wallet address cannot be zero");
         
         propertyId = _propertyId;
         propertyToken = PropertyShareToken(_propertyTokenAddress);
         usdcToken = IERC20(_usdcTokenAddress);
         treasury = _treasury;
         operator = _operator;
+        rentalWallet = _rentalWallet;
         
         currentDistributionRound = 0;
         totalDistributedUsdc = 0;
@@ -90,7 +95,54 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Deposit USDC yield for distribution to token holders
+     * @dev Pull USDC from rental wallet and distribute to token holders (one-step process)
+     * @param amount Amount of USDC to pull from rental wallet and distribute
+     * @notice Only owner or operator can pull and distribute yield
+     * @notice Rental wallet must have approved this contract for USDC transfers
+     */
+    function pullAndDistribute(uint256 amount) external onlyOwnerOrOperator nonReentrant {
+        require(amount > 0, "YieldDistributor: amount must be greater than zero");
+        require(propertyToken.mintingCompleted(), "YieldDistributor: property token minting not completed");
+        
+        // fix: pull USDC from rental wallet to this contract (Cursor Rule 4)
+        require(usdcToken.transferFrom(rentalWallet, address(this), amount), "YieldDistributor: USDC transfer from rental wallet failed");
+        
+        currentDistributionRound++;
+        
+        // fix: immediately distribute the pulled yield using the same logic as distribute() (Cursor Rule 4)
+        require(!distributionRounds[currentDistributionRound].distributionCompleted, "YieldDistributor: distribution already completed");
+        require(usdcToken.balanceOf(address(this)) >= amount, "YieldDistributor: insufficient USDC balance");
+        
+        // fix: take snapshot of current block and total token supply (Cursor Rule 4)
+        uint256 snapshotBlock = block.number;
+        uint256 totalEligibleTokens = propertyToken.totalSupply();
+        
+        require(totalEligibleTokens > 0, "YieldDistributor: no tokens in circulation");
+        
+        // fix: calculate yield per token (using 6 decimal precision for USDC) (Cursor Rule 4)
+        uint256 yieldPerToken = (amount * 1e6) / totalEligibleTokens;
+        
+        // fix: store distribution round data (Cursor Rule 4)
+        distributionRounds[currentDistributionRound] = DistributionRound({
+            totalYieldUsdc: amount,
+            yieldPerToken: yieldPerToken,
+            snapshotBlock: snapshotBlock,
+            totalEligibleTokens: totalEligibleTokens,
+            distributionTimestamp: block.timestamp,
+            distributionCompleted: false,
+            totalClaimedUsdc: 0,
+            claimsCount: 0
+        });
+        
+        totalDistributedUsdc += amount;
+        
+        emit YieldDistributed(currentDistributionRound, amount, yieldPerToken, snapshotBlock, totalEligibleTokens);
+        
+        emit YieldDeposited(currentDistributionRound, amount, block.timestamp);
+    }
+
+    /**
+     * @dev Deposit USDC yield for distribution to token holders (legacy function)
      * @param amount Amount of USDC to deposit for yield distribution
      * @notice Only owner or operator can deposit yield
      */
