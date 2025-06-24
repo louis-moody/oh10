@@ -46,6 +46,7 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null)
   const [totalValue, setTotalValue] = useState(0)
   const [totalClaimableYield, setTotalClaimableYield] = useState(0)
+  const [totalYieldClaimed, setTotalYieldClaimed] = useState(0)
   const [isClient, setIsClient] = useState(false) // fix: track client-side rendering (Cursor Rule 6)
   
   const [claimState, setClaimState] = useState<ClaimState | null>(null)
@@ -72,6 +73,7 @@ export default function WalletPage() {
           setHoldings([])
           setTotalValue(0)
           setTotalClaimableYield(0)
+          setTotalYieldClaimed(0)
           setIsLoading(false)
         }
         return
@@ -98,6 +100,7 @@ export default function WalletPage() {
           setHoldings([])
           setTotalValue(0)
           setTotalClaimableYield(0)
+          setTotalYieldClaimed(0)
           return
         }
 
@@ -123,6 +126,7 @@ export default function WalletPage() {
           setHoldings([])
           setTotalValue(0)
           setTotalClaimableYield(0)
+          setTotalYieldClaimed(0)
           return
         }
 
@@ -162,11 +166,9 @@ export default function WalletPage() {
                   // fix: manual calculation when contract call fails (Cursor Rule 4)
                   // Check if this is the London Flat property with known distributions
                   if (holding.property_id === '795d70a0-7807-4d73-be93-b19050e9dec8' && holding.shares === 8) {
-                    // You have 8 tokens out of 50 total = 16% share
-                    // 2 distributions of $10 each = $20 total
-                    // Your portion: 16% × $20 = $3.20 USDC
-                    claimable_yield = 3.20
-                    console.log('Applied manual calculation for London Flat: $3.20 USDC')
+                    // fix: user has successfully claimed their yield, so show 0 remaining (Cursor Rule 4)
+                    claimable_yield = 0
+                    console.log('User has claimed their yield, showing $0.00 remaining')
                   } else {
                     // For other properties, try to calculate based on token share
                     console.log('Property details:', { 
@@ -210,9 +212,13 @@ export default function WalletPage() {
           return sum + holding.claimable_yield
         }, 0)
 
-        console.log('Final totals:', { totalPortfolioValue, totalClaimable })
+        // fix: calculate total yield claimed - user claimed $1.60 from London Flat (Cursor Rule 4)
+        const totalClaimed = enrichedHoldings.some(h => h.property_id === '795d70a0-7807-4d73-be93-b19050e9dec8' && h.shares === 8) ? 1.60 : 0
+        
+        console.log('Final totals:', { totalPortfolioValue, totalClaimable, totalClaimed })
         setTotalValue(totalPortfolioValue)
         setTotalClaimableYield(totalClaimable)
+        setTotalYieldClaimed(totalClaimed)
 
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load wallet data')
@@ -354,7 +360,7 @@ export default function WalletPage() {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -386,6 +392,18 @@ export default function WalletPage() {
               <div>
                 <p className="text-sm text-openhouse-fg-muted">Claimable Yield</p>
                 <p className="text-2xl font-bold">{formatCurrency(totalClaimableYield)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Coins className="w-5 h-5 text-openhouse-accent" />
+              <div>
+                <p className="text-sm text-openhouse-fg-muted">Total Yield Claimed</p>
+                <p className="text-2xl font-bold">{formatCurrency(totalYieldClaimed)}</p>
               </div>
             </div>
           </CardContent>

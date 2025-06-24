@@ -119,8 +119,9 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
         
         require(totalEligibleTokens > 0, "YieldDistributor: no tokens in circulation");
         
-        // fix: calculate yield per token (using 6 decimal precision for USDC) (Cursor Rule 4)
-        uint256 yieldPerToken = (amount * 1e6) / totalEligibleTokens;
+        // fix: calculate yield per token with proper precision to avoid integer division loss (Cursor Rule 4)
+        // Use 18 decimal precision to match token decimals, then convert back for USDC
+        uint256 yieldPerToken = (amount * 1e18) / totalEligibleTokens;
         
         // fix: store distribution round data (Cursor Rule 4)
         distributionRounds[currentDistributionRound] = DistributionRound({
@@ -175,8 +176,9 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
         
         require(totalEligibleTokens > 0, "YieldDistributor: no tokens in circulation");
         
-        // fix: calculate yield per token (using 6 decimal precision for USDC) (Cursor Rule 4)
-        uint256 yieldPerToken = (yieldAmount * 1e6) / totalEligibleTokens;
+        // fix: calculate yield per token with proper precision to avoid integer division loss (Cursor Rule 4)
+        // Use 18 decimal precision to match token decimals, then convert back for USDC
+        uint256 yieldPerToken = (yieldAmount * 1e18) / totalEligibleTokens;
         
         // fix: store distribution round data (Cursor Rule 4)
         distributionRounds[currentDistributionRound] = DistributionRound({
@@ -211,7 +213,7 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
         uint256 userTokenBalance = propertyToken.balanceOf(msg.sender);
         require(userTokenBalance > 0, "YieldDistributor: no tokens held");
         
-        uint256 userYieldAmount = (userTokenBalance * round.yieldPerToken) / 1e6;
+        uint256 userYieldAmount = (userTokenBalance * round.yieldPerToken) / 1e18;
         require(userYieldAmount > 0, "YieldDistributor: no yield to claim");
         
         // fix: mark as claimed and update tracking (Cursor Rule 4)
@@ -255,7 +257,7 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
         }
         
         uint256 userTokenBalance = propertyToken.balanceOf(user);
-        return (userTokenBalance * round.yieldPerToken) / 1e6;
+        return (userTokenBalance * round.yieldPerToken) / 1e18;
     }
     
     /**
@@ -271,7 +273,7 @@ contract YieldDistributor is Ownable, ReentrancyGuard {
                 DistributionRound memory round = distributionRounds[i];
                 if (round.yieldPerToken > 0) {
                     uint256 userTokenBalance = propertyToken.balanceOf(user);
-                    totalPending += (userTokenBalance * round.yieldPerToken) / 1e6;
+                    totalPending += (userTokenBalance * round.yieldPerToken) / 1e18;
                 }
             }
         }
