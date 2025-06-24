@@ -28,7 +28,7 @@ export interface Property {
   total_shares: number
   funding_goal_usdc: number
   funding_deadline: string
-  status: 'active' | 'funded' | 'completed' | 'draft'
+  status: 'active' | 'funded' | 'completed' | 'draft' | 'live'
   created_at: string
   updated_at: string
 }

@@ -45,6 +45,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
     active: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
     funded: 'bg-openhouse-accent/10 text-openhouse-accent border-openhouse-accent/20',
     completed: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
+    live: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
     draft: 'bg-openhouse-warning/10 text-openhouse-warning border-openhouse-warning/20'
   }
 
@@ -170,7 +171,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
 
   // fix: fetch completed property stats from database and contracts (Cursor Rule 4)
   useEffect(() => {
-    if (status === 'completed') {
+    if (status === 'completed' || status === 'live') {
       fetchCompletedPropertyStats()
     }
   }, [status, fetchCompletedPropertyStats])
@@ -313,7 +314,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
           
           <div className="absolute top-3 right-3">
             <Badge className={statusColors[status]} variant="outline">
-              {status === 'completed' ? 'Live' : status}
+              {status === 'completed' || status === 'live' ? 'Live' : status}
             </Badge>
           </div>
         </div>
@@ -325,7 +326,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
         </CardHeader>
 
         {/* fix: conditionally render stats based on property status (Cursor Rule 4) */}
-        {status === 'completed' ? renderCompletedStats() : renderCrowdfundingStats()}
+        {(status === 'completed' || status === 'live') ? renderCompletedStats() : renderCrowdfundingStats()}
       </Link>
     </Card>
   )

@@ -363,7 +363,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
   // fix: determine if property is live for trading (Cursor Rule 4)
   const isPropertyLive = (status: string) => {
-    return status === 'completed' || status === 'funded'
+    return status === 'completed' || status === 'live'
   }
 
   const canReserve = () => {
@@ -378,6 +378,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     active: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
     funded: 'bg-openhouse-accent/10 text-openhouse-accent border-openhouse-accent/20',
     completed: 'bg-openhouse-fg-muted/10 text-openhouse-fg-muted border-openhouse-fg-muted/20',
+    live: 'bg-openhouse-success/10 text-openhouse-success border-openhouse-success/20',
     draft: 'bg-openhouse-warning/10 text-openhouse-warning border-openhouse-warning/20'
   }
 
@@ -749,7 +750,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   )}
                 </div>
                 <Badge className={statusColors[property.status]} variant="outline">
-                  {property.status}
+                  {property.status === 'live' ? 'Live' : property.status}
                 </Badge>
               </div>
             </div>
