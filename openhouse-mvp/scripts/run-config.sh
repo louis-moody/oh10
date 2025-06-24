@@ -1,8 +1,0 @@
-#!/bin/bash
-
-# Load environment variables
-export NEXT_PUBLIC_SUPABASE_URL="https://vnxbsnahzolxhcyxrwcm.supabase.co"
-export SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueGJzbmFoem9seGhjeXhyd2NtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDI1OTM0MywiZXhwIjoyMDY1ODM1MzQzfQ.2sVystuayYoEwYsoizreiSCyBekM_xKZc0ReKVYZW0Q"
-
-# Run the configuration script
-node scripts/configure-admin-settings.js 0x1F9D470a3B226D2d2263e6dE6fb3EeeC9dc39553 
