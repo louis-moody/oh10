@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { verifyJWT } from '@/lib/jwt'
-import { createWalletClient, http, parseUnits } from 'viem'
+import { createWalletClient, createPublicClient, http, parseUnits } from 'viem'
 import { base, baseSepolia } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
 
@@ -204,79 +204,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // fix: allow USDC collection for funded properties with deployed tokens (Cursor Rule 4)
+    // fix: PRD requirement - only allow USDC collection when status is 'funded' (Cursor Rule 4)
     if (property.status !== 'funded') {
       return NextResponse.json(
-        { error: 'Property must be funded with deployed token contract to collect USDC' },
+        { error: 'Property must have status "funded" to collect USDC. Current status: ' + property.status },
         { status: 400 }
       )
     }
 
-    if (!property.token_contract_address) {
-      return NextResponse.json(
-        { error: 'Property token contract not deployed yet' },
-        { status: 400 }
-      )
-    }
+    // fix: PRD requirement - USDC collection happens BEFORE token deployment, not after (Cursor Rule 4)
+    // Token contract is deployed AFTER USDC collection is complete
 
-    // fix: USDC collection can happen once funding goal is met and token is deployed, regardless of deadline (Cursor Rule 4)
-    // Deadline check removed - collection is triggered by admin after successful funding
-
-    // fix: fetch all reservations for this property to check status (Cursor Rule 4)
-    const { data: allReservations, error: reservationsError } = await supabaseAdmin
+    // fix: fetch payment authorizations for USDC collection (Cursor Rule 4)
+    const { data: paymentAuthorizations, error: authError } = await supabaseAdmin
       .from('payment_authorizations')
-      .select('id, wallet_address, usdc_amount, token_amount, payment_status, transfer_hash')
+      .select('id, wallet_address, usdc_amount, payment_status, approval_hash')
       .eq('property_id', property_id)
+      .eq('payment_status', 'approved')
 
-    if (reservationsError) {
+    if (authError) {
       return NextResponse.json(
-        { error: 'Failed to fetch reservations' },
+        { error: 'Failed to fetch payment authorizations' },
         { status: 500 }
       )
     }
 
-    if (!allReservations || allReservations.length === 0) {
+    if (!paymentAuthorizations || paymentAuthorizations.length === 0) {
       return NextResponse.json(
-        { error: 'No reservations found for this property' },
+        { error: 'No approved payment authorizations found for this property' },
         { status: 400 }
       )
     }
-
-    // fix: check if USDC has already been collected (Cursor Rule 7)
-    const alreadyTransferred = allReservations.filter(r => r.payment_status === 'transferred' && r.transfer_hash)
-    if (alreadyTransferred.length > 0) {
-      return NextResponse.json({
-        success: true,
-        message: `USDC already collected! ${alreadyTransferred.length} reservations successfully processed.`,
-        summary: {
-          total_reservations: allReservations.length,
-          already_processed: alreadyTransferred.length,
-          status: 'completed'
-        },
-        processed_reservations: alreadyTransferred.map(r => ({
-          wallet_address: r.wallet_address,
-          usdc_amount: r.usdc_amount,
-          token_amount: r.token_amount,
-          transfer_hash: r.transfer_hash,
-          status: 'already_completed'
-        }))
-      })
-    }
-
-    // fix: get only approved reservations that haven't been processed (Cursor Rule 4)
-    const reservations = allReservations.filter(r => r.payment_status === 'approved')
-
-    if (reservations.length === 0) {
-      return NextResponse.json(
-        { error: 'No approved reservations found for this property' },
-        { status: 400 }
-      )
-    }
-
-    // fix: calculate total funding amount (Cursor Rule 6)
-    const totalFunding = reservations.reduce((sum, res) => sum + parseFloat(res.usdc_amount.toString()), 0)
 
     // fix: verify funding goal is met (Cursor Rule 6)
+    const totalFunding = paymentAuthorizations.reduce((sum, auth) => sum + parseFloat(auth.usdc_amount.toString()), 0)
+
     if (totalFunding < parseFloat(property.funding_goal_usdc.toString())) {
       return NextResponse.json(
         { error: 'Funding goal not yet reached' },
@@ -284,233 +246,170 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // fix: initialize both operator (for USDC collection) and deployer (for token minting) wallets (Cursor Rule 4)
+    // fix: initialize blockchain client for USDC collection only (Cursor Rule 4)
     const chainId = getChainId()
     const usdcAddress = getUsdcAddress(chainId)
     const treasuryAddress = getTreasuryAddress()
     const operatorPrivateKey = getOperatorPrivateKey()
-    const deployerPrivateKey = getDeployerPrivateKey()
     
-    // fix: operator account for USDC transfers (users approve operator) (Cursor Rule 4)
     const operatorAccount = privateKeyToAccount(operatorPrivateKey)
-    // fix: deployer account for token minting (deployer is contract owner) (Cursor Rule 4) 
-    const deployerAccount = privateKeyToAccount(deployerPrivateKey)
 
     console.log(`🏠 Processing USDC collection for: ${property.name}`)
     console.log(`💰 Total funding to collect: $${totalFunding.toLocaleString()}`)
-    console.log(`👥 Number of investors: ${reservations.length}`)
+    console.log(`👥 Number of investors: ${paymentAuthorizations.length}`)
     console.log(`🏦 USDC Contract: ${usdcAddress}`)
     console.log(`🏛️ Treasury Address: ${treasuryAddress}`)
     console.log(`🔑 Operator Signer: ${operatorAccount.address}`)
-    console.log(`👤 Deployer Signer: ${deployerAccount.address}`)
-    console.log(`🎯 Token Contract: ${property.token_contract_address}`)
+
     const chain = chainId === base.id ? base : baseSepolia
     
-    // fix: create separate wallet clients for different operations (Cursor Rule 4)
     const operatorWalletClient = createWalletClient({
       account: operatorAccount,
       chain,
       transport: http()
     })
-    
-    const deployerWalletClient = createWalletClient({
-      account: deployerAccount,
+
+    const publicClient = createPublicClient({
       chain,
       transport: http()
     })
 
-    // fix: process USDC collection and token minting for each reservation (Cursor Rule 4)
+    // fix: process USDC collection with delay between calls to avoid nonce contention (PRD requirement)
     let successCount = 0
     let failureCount = 0
-    const processedReservations = []
+    const processedTransfers = []
 
-    for (const reservation of reservations) {
+    for (const authorization of paymentAuthorizations) {
       try {
-        console.log(`💸 Processing: ${reservation.wallet_address} - $${reservation.usdc_amount}`)
+        console.log(`💸 Processing USDC transfer: ${authorization.wallet_address} - $${authorization.usdc_amount}`)
 
         // fix: convert USDC amount to wei (6 decimals) (Cursor Rule 4)
-        const usdcAmountWei = parseUnits(reservation.usdc_amount.toString(), 6)
+        const usdcAmountWei = parseUnits(authorization.usdc_amount.toString(), 6)
         
-        // fix: collect approved USDC from investor to treasury using operator wallet (Cursor Rule 4)
+        // fix: collect approved USDC from investor to treasury (Cursor Rule 4)
         const transferHash = await operatorWalletClient.writeContract({
           address: usdcAddress,
           abi: USDC_ABI,
           functionName: 'transferFrom',
           args: [
-            reservation.wallet_address as `0x${string}`,
+            authorization.wallet_address as `0x${string}`,
             treasuryAddress,
             usdcAmountWei
           ]
         })
 
-        console.log(`✅ USDC transfer successful: ${transferHash}`)
+        console.log(`⏳ USDC transfer submitted: ${transferHash}`)
 
-        // fix: mint property tokens to investor using deployer wallet (contract owner) (Cursor Rule 4)
-        // fix: convert token amount to proper decimals (18 decimals for ERC20 tokens) (Cursor Rule 4)
-        const tokenAmountWei = parseUnits(reservation.token_amount.toString(), 18)
-        const mintHash = await deployerWalletClient.writeContract({
-          address: property.token_contract_address as `0x${string}`,
-          abi: PROPERTY_SHARE_TOKEN_ABI,
-          functionName: 'mintTo',
-          args: [
-            reservation.wallet_address as `0x${string}`,
-            tokenAmountWei
-          ]
+        // fix: wait for transaction confirmation (Cursor Rule 4)
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: transferHash
         })
 
-        console.log(`🎯 Token minting successful: ${mintHash}`)
+        if (receipt.status !== 'success') {
+          throw new Error('Transaction failed on-chain')
+        }
 
-        // fix: update reservation status with transaction hashes (Cursor Rule 4)
+        console.log(`✅ USDC transfer confirmed: ${transferHash}`)
+
+        // fix: update payment authorization with transfer details using existing schema (Cursor Rule 4)
         const { error: updateError } = await supabaseAdmin
           .from('payment_authorizations')
           .update({
             payment_status: 'transferred',
-            transfer_hash: transferHash,
-            transfer_timestamp: new Date().toISOString(),
-            tokens_minted: true,
-            mint_hash: mintHash,
-            mint_timestamp: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
-          .eq('id', reservation.id)
+          .eq('id', authorization.id)
 
         if (updateError) {
-          console.warn(`⚠️ Database update failed: ${updateError.message}`)
+          console.warn(`⚠️ Failed to update payment authorization: ${updateError.message}`)
         }
 
-        // fix: create user holding record with correct column names (Cursor Rule 4)
-        const { data: user } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('wallet_address', reservation.wallet_address)
-          .single()
-
-        if (user) {
-          const { error: holdingError } = await supabaseAdmin
-            .from('user_holdings')
-            .upsert({
-              user_id: user.id,
-              property_id: property_id,
-              token_contract: property.token_contract_address,
-              shares: reservation.token_amount
-            }, {
-              onConflict: 'user_id,property_id'
-            })
-
-          if (holdingError) {
-            console.warn(`⚠️ User holding creation failed: ${holdingError.message}`)
-          }
-        } else {
-          console.warn(`⚠️ User not found for wallet: ${reservation.wallet_address}`)
-        }
-
-        // fix: create transaction records (Cursor Rule 4)
-        const transactions = [
-          {
-            user_address: reservation.wallet_address,
-            property_id: property_id,
-            type: 'usdc_collection',
-            amount: reservation.usdc_amount,
-            tx_hash: transferHash,
-            created_at: new Date().toISOString()
-          },
-          {
-            user_address: reservation.wallet_address,
-            property_id: property_id,
-            type: 'token_mint',
-            amount: reservation.token_amount,
-            tx_hash: mintHash,
-            created_at: new Date().toISOString()
-          }
-        ]
-
+        // fix: create transaction record (Cursor Rule 4)
         const { error: transactionError } = await supabaseAdmin
           .from('transactions')
-          .insert(transactions)
+          .insert({
+            user_address: authorization.wallet_address,
+            property_id: property_id,
+            type: 'usdc_collection',
+            amount: authorization.usdc_amount,
+            tx_hash: transferHash,
+            created_at: new Date().toISOString()
+          })
 
         if (transactionError) {
-          console.warn(`⚠️ Transaction logging failed: ${transactionError.message}`)
+          console.warn(`⚠️ Failed to create transaction record: ${transactionError.message}`)
         }
 
-        processedReservations.push({
-          wallet_address: reservation.wallet_address,
-          usdc_amount: reservation.usdc_amount,
-          token_amount: reservation.token_amount,
+        processedTransfers.push({
+          wallet_address: authorization.wallet_address,
+          usdc_amount: authorization.usdc_amount,
           transfer_hash: transferHash,
-          mint_hash: mintHash,
           status: 'success'
         })
 
         successCount++
-        console.log(`✅ Successfully processed reservation ${reservation.id}`)
+        console.log(`✅ Successfully processed USDC transfer for ${authorization.wallet_address}`)
+
+        // fix: PRD requirement - add delay between transfers to avoid nonce contention
+        if (authorization !== paymentAuthorizations[paymentAuthorizations.length - 1]) {
+          console.log('⏳ Waiting 1 second before next transfer...')
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
 
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-        console.error(`❌ Failed to process reservation ${reservation.id}:`, errorMessage)
+        console.error(`❌ Failed to process USDC transfer for ${authorization.wallet_address}:`, errorMessage)
         
-        // fix: log specific allowance errors for debugging (Cursor Rule 6)
-        if (errorMessage.includes('allowance')) {
-          console.error(`   💡 Allowance issue: User may not have approved operator address for USDC spending`)
-          console.error(`   💡 Required: User must approve ${operatorAccount.address} to spend ${reservation.usdc_amount} USDC`)
-          console.error(`   💡 Check: User should have approved operator (${operatorAccount.address}), not treasury (${treasuryAddress})`)
-        }
-        
-        failureCount++
-        processedReservations.push({
-          wallet_address: reservation.wallet_address,
-          usdc_amount: reservation.usdc_amount,
-          token_amount: reservation.token_amount,
+        processedTransfers.push({
+          wallet_address: authorization.wallet_address,
+          usdc_amount: authorization.usdc_amount,
+          transfer_hash: null,
           status: 'failed',
           error: errorMessage
         })
 
-        // fix: mark reservation as failed (Cursor Rule 4)
-        await supabaseAdmin
-          .from('payment_authorizations')
-          .update({
-            payment_status: 'failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', reservation.id)
+        failureCount++
       }
     }
 
-    // fix: update property status to completed after successful USDC collection (Cursor Rule 4)
+    // fix: update property status to 'collected' when all USDC transfers are successful (PRD requirement)
     if (successCount > 0 && failureCount === 0) {
       const { error: statusUpdateError } = await supabaseAdmin
         .from('properties')
         .update({
-          status: 'completed'
+          status: 'collected'
+          // Note: properties table doesn't have updated_at column based on actual schema
         })
         .eq('id', property_id)
 
       if (statusUpdateError) {
-        console.warn(`⚠️ Property status update failed: ${statusUpdateError.message}`)
+        console.error(`❌ Failed to update property status to collected: ${statusUpdateError.message}`)
+      } else {
+        console.log(`✅ Property status updated to 'collected'`)
       }
     }
 
-    console.log(`📊 Final Results:`)
-    console.log(`   ✅ Successful: ${successCount}/${reservations.length}`)
-    console.log(`   ❌ Failed: ${failureCount}/${reservations.length}`)
-    console.log(`   💰 Total collected: $${(successCount / reservations.length * totalFunding).toLocaleString()}`)
+    const summary = {
+      total_authorizations: paymentAuthorizations.length,
+      successful_transfers: successCount,
+      failed_transfers: failureCount,
+      total_usdc_collected: processedTransfers
+        .filter(t => t.status === 'success')
+        .reduce((sum, t) => sum + parseFloat(t.usdc_amount.toString()), 0),
+      property_status: successCount > 0 && failureCount === 0 ? 'collected' : 'partially_collected'
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'USDC collection and token minting completed',
-      summary: {
-        total_reservations: reservations.length,
-        successful_collections: successCount,
-        failed_collections: failureCount,
-        total_amount_collected: successCount / reservations.length * totalFunding,
-        property_status: successCount > 0 && failureCount === 0 ? 'funded' : 'partially_funded'
-      },
-      processed_reservations: processedReservations
+      message: `USDC collection ${failureCount === 0 ? 'completed successfully' : 'completed with some failures'}`,
+      summary,
+      processed_transfers: processedTransfers
     })
 
   } catch (error) {
     console.error('❌ USDC collection failed:', error)
     return NextResponse.json(
-      { error: 'Internal server error during USDC collection' },
+      { error: `USDC collection failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     )
   }

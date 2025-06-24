@@ -73,6 +73,11 @@ export default function AdminDistributeYieldPage() {
         const propertyId = params.id as string
         
         // fix: fetch property details (Cursor Rule 4)
+        if (!supabase) {
+          setError('Database not configured')
+          return
+        }
+        
         const { data: propertyData, error: propertyError } = await supabase
           .from('properties')
           .select('id, name, status, total_shares, price_per_token')
@@ -213,14 +218,16 @@ export default function AdminDistributeYieldPage() {
         setIsConfirmModalOpen(false)
         
         // Refresh distribution history
-        const { data: historyData } = await supabase
-          .from('rental_distributions')
-          .select('id, usdc_amount, tx_hash, distributed_at')
-          .eq('property_id', property?.id)
-          .order('distributed_at', { ascending: false })
+        if (supabase) {
+          const { data: historyData } = await supabase
+            .from('rental_distributions')
+            .select('id, usdc_amount, tx_hash, distributed_at')
+            .eq('property_id', property?.id)
+            .order('distributed_at', { ascending: false })
 
-        if (historyData) {
-          setDistributionHistory(historyData)
+          if (historyData) {
+            setDistributionHistory(historyData)
+          }
         }
       } else {
         setTxError('Failed to record distribution in database')

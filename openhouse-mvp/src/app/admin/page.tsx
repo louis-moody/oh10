@@ -152,7 +152,7 @@ export default function AdminDashboard() {
           .from('payment_authorizations')
           .select('usdc_amount')
           .eq('property_id', property.id)
-          .eq('payment_status', 'approved')
+          .in('payment_status', ['approved', 'transferred'])
 
         let raisedAmount = 0
         let paymentCount = 0
@@ -211,10 +211,10 @@ export default function AdminDashboard() {
         setUsdcCollectionSuccess({
           property_name: property?.name || 'Unknown Property',
           total_reservations: result.summary.total_reservations || 0,
-          successful_collections: result.summary.successful_collections || 0,
-          failed_collections: result.summary.failed_collections || 0,
-          total_amount_collected: result.summary.total_amount_collected || 0,
-          processed_reservations: result.processed_reservations || []
+          successful_collections: result.summary.successful_transfers || 0,
+          failed_collections: result.summary.failed_transfers || 0,
+          total_amount_collected: result.summary.total_usdc_collected || 0,
+          processed_reservations: result.processed_transfers || []
         })
         setShowUsdcSuccessModal(true)
       }
@@ -311,28 +311,21 @@ export default function AdminDashboard() {
     // fix: disable operations on flagged properties (Cursor Rule 4)
     if (property.status.startsWith('flagged_')) return false
     
-    // fix: disable USDC collection if already completed (Cursor Rule 7)
-    if (property.status === 'completed') return false
-    
-    // fix: enable USDC collection when token is deployed and property is funded (Cursor Rule 4)
-    return property.status === 'funded' && 
-           property.token_contract_address // Token must be deployed first
+    // fix: PRD requirement - only allow USDC collection when status is 'funded' (Cursor Rule 4)
+    return property.status === 'funded'
   }
 
   const canDeployToken = (property: PropertyWithFunding) => {
     // fix: disable operations on flagged properties (Cursor Rule 4)
     if (property.status.startsWith('flagged_')) return false
     
-    // fix: enable token deployment when funding goal is 100% met and property is active (Cursor Rule 4)
-    return property.status === 'active' && 
-           property.progress_percentage >= 100 &&
-           !property.token_contract_address // Not yet deployed
+    // fix: PRD requirement - only allow token deployment when status is 'collected' (Cursor Rule 4)
+    return property.status === 'collected'
   }
 
   const canDistributeYield = (property: PropertyWithFunding) => {
-    // fix: enable yield distribution for completed properties with deployed tokens (Cursor Rule 4)
-    return property.status === 'completed' && 
-           property.token_contract_address // Token must be deployed
+    // fix: PRD requirement - enable yield distribution for 'live' properties (Cursor Rule 4)
+    return property.status === 'live'
   }
 
   // Property actions

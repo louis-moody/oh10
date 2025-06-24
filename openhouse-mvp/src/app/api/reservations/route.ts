@@ -9,9 +9,13 @@ const USDC_ABI = parseAbi([
   'event Approval(address indexed owner, address indexed spender, uint256 value)'
 ])
 
-// fix: get environment variables for on-chain verification (Cursor Rule 4)
-function getUSDCContractAddress(): string {
-  const address = process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS
+// fix: get USDC contract address using the same function as frontend (Cursor Rule 4)
+function getUSDCContractAddress(chainId: number): string {
+  // Use the same function as the frontend to ensure consistency
+  const address = chainId === 84532 
+    ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e" // Base Sepolia
+    : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  // Base Mainnet
+  
   if (!address || !isAddress(address)) {
     throw new Error('USDC contract address not configured or invalid')
   }
@@ -49,7 +53,7 @@ async function verifyUSDCApproval(
       transport: http()
     })
 
-    const usdcAddress = getUSDCContractAddress()
+    const usdcAddress = getUSDCContractAddress(84532) // Base Sepolia
     const operatorAddress = await getOperatorAddress()
 
     // fix: get transaction receipt to verify it exists and succeeded (Cursor Rule 4)

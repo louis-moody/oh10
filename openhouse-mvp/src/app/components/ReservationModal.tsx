@@ -31,22 +31,13 @@ interface ReservationModalProps {
   } | null
 }
 
-// fix: get operator address for USDC approvals - derive from private key for consistency (Cursor Rule 4)
+// fix: get operator address for USDC approvals from environment variable (Cursor Rule 4)
 const getOperatorAddress = (): `0x${string}` | null => {
-  const privateKey = process.env.NEXT_PUBLIC_OPERATOR_PRIVATE_KEY
-  if (!privateKey || !privateKey.startsWith('0x')) {
+  const address = process.env.NEXT_PUBLIC_OPERATOR_ADDRESS
+  if (!address || !address.startsWith('0x')) {
     return null
   }
-  
-  try {
-    // fix: derive address from private key to ensure frontend/backend consistency (Cursor Rule 4)
-    const { privateKeyToAccount } = require('viem/accounts')
-    const account = privateKeyToAccount(privateKey as `0x${string}`)
-    return account.address
-  } catch (error) {
-    console.error('Failed to derive operator address from private key:', error)
-    return null
-  }
+  return address as `0x${string}`
 }
 
 // fix: get treasury address from environment variables (Cursor Rule 4)
