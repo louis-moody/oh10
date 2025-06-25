@@ -251,26 +251,75 @@ export function TradingModal({
       }))
     })
 
-    // fix: VERIFY ORDERS EXIST ON CONTRACT by checking individual orders (Cursor Rule 2)
+    // fix: check for orders without contract_order_id and offer sync (Cursor Rule 6)
+    const ordersWithoutContractId = sellOrders.filter(order => !order.contract_order_id)
+    if (ordersWithoutContractId.length > 0) {
+      console.warn('⚠️ TRADING MODAL: Found orders without contract_order_id:', ordersWithoutContractId.length)
+      console.log('📋 TRADING MODAL: These orders may need manual sync or RPC was failing during creation')
+    }
+
+    // fix: VERIFY ORDERS EXIST ON CONTRACT by checking individual orders with better error handling (Cursor Rule 2)
     console.log('🔍 TRADING MODAL: Verifying orders exist on contract...')
     
     const ethers = await import('ethers')
-    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org')
+    
+    // fix: use multiple RPC providers with fallback (Cursor Rule 3)
+    const rpcUrls = [
+      process.env.NEXT_PUBLIC_BASE_RPC_URL,
+      'https://sepolia.base.org',
+      'https://base-sepolia.public.blastapi.io',
+      'https://base-sepolia-rpc.publicnode.com'
+    ].filter(Boolean)
+    
+    let provider = null
+    
+    // Try different RPC providers
+    for (const rpcUrl of rpcUrls) {
+      try {
+        const testProvider = new ethers.JsonRpcProvider(rpcUrl)
+        // Test the connection quickly
+        await Promise.race([
+          testProvider.getBlockNumber(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+        ])
+        provider = testProvider
+        console.log(`✅ TRADING MODAL: Connected to RPC: ${rpcUrl}`)
+        break
+      } catch (rpcError) {
+        console.log(`❌ TRADING MODAL: RPC ${rpcUrl} failed:`, rpcError)
+      }
+    }
+    
+    if (!provider) {
+      console.error('❌ TRADING MODAL: All RPC endpoints failed - falling back to order placement')
+      await createBuyOrder()
+      return
+    }
     
     // fix: check each sell order individually to see if it exists on contract (Cursor Rule 6)
     const validSellOrders = []
+    
     for (const sellOrder of sellOrders) {
-      if (!sellOrder.contract_order_id) continue
+      // Skip orders without contract_order_id
+      if (!sellOrder.contract_order_id) {
+        console.log(`⚠️ TRADING MODAL: Skipping order ${sellOrder.id} - no contract_order_id`)
+        continue
+      }
       
       try {
-        // Query the specific order from the contract
+        // Query the specific order from the contract with timeout
         const contract = new ethers.Contract(
           property.orderbook_contract_address,
           OrderBookExchangeABI,
           provider
         )
         
-        const contractOrder = await contract.getOrder(sellOrder.contract_order_id)
+        const contractOrder = await Promise.race([
+          contract.getOrder(sellOrder.contract_order_id),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Contract call timeout')), 5000)
+          )
+        ])
         
         console.log(`🔍 TRADING MODAL: Contract order ${sellOrder.contract_order_id}:`, {
           orderId: contractOrder[0].toString(),
