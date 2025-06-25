@@ -347,22 +347,18 @@ async function executeOrderMatch(
         .eq('property_id', propertyId) : Promise.resolve()
     ])
 
-    // fix: record the trade in activity log (Cursor Rule 4)
+    // fix: record the trade in activity log with correct column names (Cursor Rule 4)
     await supabaseAdmin
       .from('property_activity')
       .insert({
         property_id: propertyId,
-        user_address: orderType === 'buy' ? 'system' : matchOrder.user_address,
+        wallet_address: orderType === 'buy' ? 'system' : matchOrder.user_address,
         activity_type: 'trade_executed',
         share_count: shares,
         price_per_share: pricePerShare,
+        total_amount: shares * pricePerShare,
         transaction_hash: `execution_${Date.now()}`, // Temporary until real tx
-        created_at: new Date().toISOString(),
-        details: JSON.stringify({
-          buyer_order_id: orderType === 'buy' ? newOrderContractId : matchOrder.contract_order_id,
-          seller_order_id: orderType === 'sell' ? newOrderContractId : matchOrder.contract_order_id,
-          execution_type: 'automatic'
-        })
+        created_at: new Date().toISOString()
       })
 
     console.log('✅ EXECUTION: Orders marked as executed in database')

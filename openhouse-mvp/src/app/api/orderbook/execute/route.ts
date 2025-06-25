@@ -115,15 +115,16 @@ export async function POST(req: NextRequest) {
       remainingShares -= sharesToFill
     }
 
-    // Record the execution transaction in activity log
+    // fix: record the buy transaction in activity log with correct column names (Cursor Rule 4)
     const { error: activityError } = await supabaseAdmin
       .from('property_activity')
       .insert({
         property_id,
-        user_address: buyer_address.toLowerCase(),
-        activity_type: 'order_execution',
+        wallet_address: buyer_address.toLowerCase(),
+        activity_type: 'trade_executed',
         share_count: parseFloat(shares_bought),
         price_per_share: parseFloat(price_per_share),
+        total_amount: parseFloat(shares_bought) * parseFloat(price_per_share),
         transaction_hash: transaction_hash.toLowerCase(),
         created_at: new Date().toISOString()
       })
