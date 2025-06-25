@@ -45,31 +45,60 @@ async function main() {
   console.log("⚙️  Operator:", WALLET_ADDRESSES.OPERATOR);
   console.log("");
 
-  // fix: fetch properties with deployed PropertyShareToken contracts and rental wallet addresses from Supabase (Cursor Rule 4)
-  const { data: properties, error } = await supabase
-    .from('property_token_details')
-    .select(`
-      property_id,
-      contract_address,
-      rental_wallet_address,
-      token_name,
-      token_symbol
-    `)
-    .not('contract_address', 'is', null)
-    .not('rental_wallet_address', 'is', null);
+  // fix: check if deploying for a specific property or all properties (Cursor Rule 4)
+  const targetPropertyId = process.env.PROPERTY_ID;
+  const targetPropertyTokenAddress = process.env.PROPERTY_TOKEN_ADDRESS;
+  const targetRentalWalletAddress = process.env.RENTAL_WALLET_ADDRESS;
 
-  if (error) {
-    console.error("❌ Error fetching properties from Supabase:", error);
-    process.exit(1);
+  let properties = [];
+
+  if (targetPropertyId && targetPropertyTokenAddress && targetRentalWalletAddress) {
+    // Single property deployment mode (called from deploy-token API)
+    console.log("🎯 Single property deployment mode");
+    console.log(`   Property ID: ${targetPropertyId}`);
+    console.log(`   Token Address: ${targetPropertyTokenAddress}`);
+    console.log(`   Rental Wallet: ${targetRentalWalletAddress}`);
+    
+    // Create a property object for single deployment
+    properties = [{
+      property_id: targetPropertyId,
+      contract_address: targetPropertyTokenAddress,
+      rental_wallet_address: targetRentalWalletAddress,
+      token_name: `Property_${targetPropertyId.slice(0, 8)}`,
+      token_symbol: `PROP${targetPropertyId.slice(0, 4)}`
+    }];
+  } else {
+    // Batch deployment mode (standalone script)
+    console.log("📦 Batch deployment mode - deploying for all properties");
+    
+    const { data: fetchedProperties, error } = await supabase
+      .from('property_token_details')
+      .select(`
+        property_id,
+        contract_address,
+        rental_wallet_address,
+        token_name,
+        token_symbol
+      `)
+      .not('contract_address', 'is', null)
+      .not('rental_wallet_address', 'is', null)
+      .is('yield_distributor_address', null); // Only deploy for properties without YieldDistributor
+
+    if (error) {
+      console.error("❌ Error fetching properties from Supabase:", error);
+      process.exit(1);
+    }
+
+    if (!fetchedProperties || fetchedProperties.length === 0) {
+      console.log("⚠️  No properties need YieldDistributor deployment");
+      console.log("   All properties either have YieldDistributor deployed or lack required contracts");
+      process.exit(0);
+    }
+
+    properties = fetchedProperties;
   }
 
-  if (!properties || properties.length === 0) {
-    console.log("⚠️  No properties with deployed PropertyShareToken contracts found");
-    console.log("   Deploy PropertyShareToken contracts first using: npm run contracts:deploy:sepolia");
-    process.exit(0);
-  }
-
-  console.log(`📋 Found ${properties.length} properties with deployed tokens:\n`);
+  console.log(`📋 Deploying YieldDistributor for ${properties.length} propert${properties.length === 1 ? 'y' : 'ies'}:\n`);
 
   // fix: deploy YieldDistributor for each property with PropertyShareToken (Cursor Rule 4)
   for (const property of properties) {
@@ -99,8 +128,12 @@ async function main() {
 
       await yieldDistributor.waitForDeployment();
       const deployedAddress = await yieldDistributor.getAddress();
+      const deploymentHash = yieldDistributor.deploymentTransaction()?.hash;
 
       console.log(`   ✅ YieldDistributor deployed: ${deployedAddress}`);
+      if (deploymentHash) {
+        console.log(`   📝 Deployment hash: ${deploymentHash}`);
+      }
 
       // fix: store YieldDistributor contract address in Supabase (Cursor Rule 4)
       const { error: updateError } = await supabase

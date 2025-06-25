@@ -411,6 +411,83 @@ export async function POST(request: NextRequest) {
     }
     console.log(`✅ OrderBookExchange deployed at: ${orderbookAddress}`)
 
+    // fix: AUTO-DEPLOY YIELD DISTRIBUTOR AFTER ORDERBOOK (Cursor Rule 4)
+    console.log('🚀 Auto-deploying YieldDistributor...')
+    
+    // Get rental wallet address from environment
+    const rentalWalletAddress = process.env.RENTAL_WALLET_ADDRESS
+    if (!rentalWalletAddress) {
+      throw new Error('RENTAL_WALLET_ADDRESS environment variable is required for YieldDistributor deployment')
+    }
+    
+    // Deploy YieldDistributor via Hardhat
+    console.log('🚀 Deploying YieldDistributor via Hardhat...')
+    
+    const yieldDistributorDeploymentProcess = spawn('npx', [
+      'hardhat', 'run', 'scripts/deploy-yield-distributor.js',
+      '--network', chainId === base.id ? 'baseMainnet' : 'baseSepolia'
+    ], {
+      env: {
+        ...process.env,
+        PROPERTY_ID: propertyIdNumeric.toString(),
+        PROPERTY_TOKEN_ADDRESS: contractAddress,
+        USDC_TOKEN_ADDRESS: chainId === base.id ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' : '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        TREASURY_ADDRESS: treasuryAddress,
+        OPERATOR_ADDRESS: account.address,
+        RENTAL_WALLET_ADDRESS: rentalWalletAddress
+      }
+    })
+
+    let yieldDistributorOutput = ''
+    let yieldDistributorError = ''
+
+    yieldDistributorDeploymentProcess.stdout.on('data', (data: Buffer) => {
+      yieldDistributorOutput += data.toString()
+    })
+
+    yieldDistributorDeploymentProcess.stderr.on('data', (data: Buffer) => {
+      yieldDistributorError += data.toString()
+    })
+
+    const yieldDistributorResult = await new Promise<{success: boolean, contractAddress?: string, deploymentHash?: string}>((resolve) => {
+      yieldDistributorDeploymentProcess.on('close', (code: number) => {
+        if (code === 0) {
+          const addressMatch = yieldDistributorOutput.match(/YieldDistributor deployed: (0x[a-fA-F0-9]{40})/)
+          const hashMatch = yieldDistributorOutput.match(/Deployment hash: (0x[a-fA-F0-9]{64})/)
+          
+          if (addressMatch) {
+            resolve({
+              success: true,
+              contractAddress: addressMatch[1],
+              deploymentHash: hashMatch?.[1]
+            })
+          } else {
+            resolve({ success: false })
+          }
+        } else {
+          console.error('YieldDistributor deployment failed:', yieldDistributorError)
+          resolve({ success: false })
+        }
+      })
+    })
+
+    let yieldDistributorAddress: string | null = null
+    if (yieldDistributorResult.success && yieldDistributorResult.contractAddress) {
+      yieldDistributorAddress = yieldDistributorResult.contractAddress
+      console.log(`✅ YieldDistributor deployed at: ${yieldDistributorAddress}`)
+
+      // Wait for yield distributor deployment confirmation
+      if (yieldDistributorResult.deploymentHash) {
+        const yieldDistributorReceipt = await publicClient.waitForTransactionReceipt({
+          hash: yieldDistributorResult.deploymentHash as `0x${string}`
+        })
+        console.log(`✅ YieldDistributor deployment confirmed`)
+      }
+    } else {
+      console.warn('⚠️ YieldDistributor deployment failed, continuing without it')
+      // Don't fail the entire deployment if YieldDistributor fails
+    }
+
     // fix: populate property_token_details table for trading interface (Cursor Rule 4)
     const { error: tokenDetailsError } = await supabaseAdmin
       .from('property_token_details')
@@ -418,6 +495,8 @@ export async function POST(request: NextRequest) {
         property_id: property_id,
         contract_address: contractAddress,
         orderbook_contract_address: orderbookAddress, // fix: include orderbook address (Cursor Rule 4)
+        yield_distributor_address: yieldDistributorAddress, // fix: include yield distributor address (Cursor Rule 4)
+        rental_wallet_address: rentalWalletAddress, // fix: include rental wallet address (Cursor Rule 4)
         token_name: tokenName,
         token_symbol: tokenSymbol,
         total_shares: property.total_shares,

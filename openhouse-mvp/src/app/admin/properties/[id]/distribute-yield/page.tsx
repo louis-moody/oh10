@@ -105,7 +105,7 @@ export default function AdminDistributeYieldPage() {
           .single()
 
         if (tokenError || !tokenData?.yield_distributor_address) {
-          setError('YieldDistributor contract not deployed for this property')
+          setError('YieldDistributor contract not deployed for this property. Please deploy the token contracts first.')
           return
         }
 
