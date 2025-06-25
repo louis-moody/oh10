@@ -34,6 +34,7 @@ interface DistributionHistory {
   usdc_amount: number
   tx_hash: string
   distributed_at: string
+  wallet_address?: string
 }
 
 // fix: admin yield distribution page component (Cursor Rule 4)
@@ -113,7 +114,7 @@ export default function AdminDistributeYieldPage() {
 
         setTokenDetails(tokenData)
 
-        // fix: fetch distribution history (Cursor Rule 4)
+        // fix: fetch distribution history from rental_distributions table (Cursor Rule 4)
         const { data: historyData, error: historyError } = await supabase
           .from('rental_distributions')
           .select('id, usdc_amount, tx_hash, distributed_at')
@@ -122,6 +123,9 @@ export default function AdminDistributeYieldPage() {
 
         if (!historyError && historyData) {
           setDistributionHistory(historyData)
+        } else {
+          console.warn('Failed to fetch distribution history:', historyError)
+          setDistributionHistory([])
         }
 
       } catch (err) {
@@ -251,10 +255,10 @@ export default function AdminDistributeYieldPage() {
       if (response.ok) {
         setTxState('success')
         setSuccessTxHash(txHash)
-        setYieldAmount('')
         setIsConfirmModalOpen(false)
+        // fix: don't clear yieldAmount until success modal is closed to show correct amount (Cursor Rule 7)
         
-        // Refresh distribution history
+        // fix: refresh distribution history after successful distribution (Cursor Rule 4)
         if (supabase) {
           const { data: historyData } = await supabase
             .from('rental_distributions')
@@ -584,7 +588,10 @@ export default function AdminDistributeYieldPage() {
       </Dialog>
 
       {/* Success Modal */}
-      <Dialog open={txState === 'success'} onOpenChange={() => setTxState('idle')}>
+      <Dialog open={txState === 'success'} onOpenChange={() => {
+        setTxState('idle')
+        setYieldAmount('') // fix: clear amount when modal is closed (Cursor Rule 7)
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -611,7 +618,10 @@ export default function AdminDistributeYieldPage() {
             )}
 
             <Button
-              onClick={() => setTxState('idle')}
+              onClick={() => {
+                setTxState('idle')
+                setYieldAmount('') // fix: clear amount when close button is clicked (Cursor Rule 7)
+              }}
               className="w-full"
             >
               Close
