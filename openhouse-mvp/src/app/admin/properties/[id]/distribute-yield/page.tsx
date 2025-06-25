@@ -54,6 +54,8 @@ export default function AdminDistributeYieldPage() {
   const [txState, setTxState] = useState<'idle' | 'approving' | 'depositing' | 'success' | 'error'>('idle')
   const [txError, setTxError] = useState<string | null>(null)
   const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
+  const [isApproving, setIsApproving] = useState(false)
+  const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null)
 
   const { writeContract: writeApproval, data: approvalHash, error: approvalError } = useWriteContract()
   const { writeContract: writeDeposit, data: depositHash, error: depositError } = useWriteContract()
@@ -132,6 +134,41 @@ export default function AdminDistributeYieldPage() {
 
     loadPropertyData()
   }, [params.id])
+
+  // fix: handle rental wallet approval via API (Cursor Rule 4)
+  const handleApproveRentalWallet = async () => {
+    if (!property?.id) return
+
+    setIsApproving(true)
+    setApprovalSuccess(null)
+
+    try {
+      const response = await fetch('/api/admin/approve-rental-wallet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          property_id: property.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setApprovalSuccess(result.transaction_hash)
+        console.log('✅ Rental wallet approval successful:', result)
+      } else {
+        setTxError(result.error || 'Approval failed')
+        console.error('❌ Rental wallet approval failed:', result)
+      }
+    } catch (error) {
+      setTxError('Failed to approve rental wallet')
+      console.error('❌ Approval error:', error)
+    } finally {
+      setIsApproving(false)
+    }
+  }
 
   // fix: handle pull and distribute yield in one transaction (Cursor Rule 4)
   const handlePullAndDistribute = async () => {
@@ -336,19 +373,58 @@ export default function AdminDistributeYieldPage() {
           </div>
           
           {tokenDetails && (
-            <div className="pt-4 border-t">
-              <p className="text-sm text-openhouse-fg-muted mb-2">YieldDistributor Contract</p>
-              <div className="flex items-center gap-2">
-                <code className="text-xs bg-openhouse-bg-muted px-2 py-1 rounded">
-                  {tokenDetails.yield_distributor_address}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.open(getBaseScanUrl(tokenDetails.yield_distributor_address), '_blank')}
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
+            <div className="pt-4 border-t space-y-3">
+              <div>
+                <p className="text-sm text-openhouse-fg-muted mb-2">YieldDistributor Contract</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-openhouse-bg-muted px-2 py-1 rounded">
+                    {tokenDetails.yield_distributor_address}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.open(getBaseScanUrl(tokenDetails.yield_distributor_address), '_blank')}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Rental Wallet Approval Section */}
+              <div>
+                <p className="text-sm text-openhouse-fg-muted mb-2">Rental Wallet Setup</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleApproveRentalWallet}
+                    disabled={isApproving}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {isApproving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Approving...
+                      </>
+                    ) : (
+                      'Approve Rental Wallet'
+                    )}
+                  </Button>
+                  {approvalSuccess && (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-openhouse-success" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(`https://sepolia.basescan.org/tx/${approvalSuccess}`, '_blank')}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-openhouse-fg-muted mt-1">
+                  This allows the YieldDistributor to pull USDC from the rental wallet
+                </p>
               </div>
             </div>
           )}
