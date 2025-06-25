@@ -81,6 +81,13 @@ export default function AdminDashboard() {
   // fix: add fallback liquidity modal state (Cursor Rule 4)
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState<PropertyWithFunding | null>(null)
+  // fix: add status update UI state instead of browser alerts (Cursor Rule 13)
+  const [statusUpdateResult, setStatusUpdateResult] = useState<{
+    success: boolean
+    message: string
+    property_name?: string
+  } | null>(null)
+  const [showStatusUpdateModal, setShowStatusUpdateModal] = useState(false)
 
   useEffect(() => {
     checkAdminAccess()
@@ -328,6 +335,55 @@ export default function AdminDashboard() {
     return property.status === 'live'
   }
 
+  // fix: check if property can be updated to 'funded' status (Cursor Rule 4)
+  const canUpdateToFunded = (property: PropertyWithFunding) => {
+    return property.status === 'active' && property.progress_percentage >= 100
+  }
+
+  // fix: update property status to 'funded' when 100% funded (Cursor Rule 4)
+  const handleUpdateToFunded = async (property: PropertyWithFunding) => {
+    try {
+      setIsProcessing(property.id)
+      setError(null)
+      
+      const response = await fetch('/api/admin/update-property-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ property_id: property.id })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        // fix: use proper UI modal instead of browser alert (Cursor Rule 13)
+        setStatusUpdateResult({
+          success: true,
+          message: result.message,
+          property_name: property.name
+        })
+        setShowStatusUpdateModal(true)
+        await fetchProperties() // Refresh the list
+      } else {
+        setStatusUpdateResult({
+          success: false,
+          message: result.error || 'Failed to update property status',
+          property_name: property.name
+        })
+        setShowStatusUpdateModal(true)
+      }
+    } catch (error) {
+      setStatusUpdateResult({
+        success: false,
+        message: `Failed to update property status: ${error}`,
+        property_name: property.name
+      })
+      setShowStatusUpdateModal(true)
+    } finally {
+      setIsProcessing(null)
+    }
+  }
+
   // Property actions
   const handleViewTokenInfo = (property: PropertyWithFunding) => {
     setSelectedProperty(property)
@@ -407,6 +463,17 @@ export default function AdminDashboard() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
+                        {canUpdateToFunded(property) && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateToFunded(property)}
+                            disabled={isProcessing === property.id}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Mark as Funded
+                          </Button>
+                        )}
                         {canCollectUsdc(property) && (
                           <Button
                             size="sm"
@@ -717,6 +784,43 @@ export default function AdminDashboard() {
           property={selectedProperty}
         />
       )}
+
+      {/* fix: Status Update Result Modal - no browser alerts (Cursor Rule 13) */}
+      <Dialog open={showStatusUpdateModal} onOpenChange={setShowStatusUpdateModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {statusUpdateResult?.success ? (
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              )}
+              {statusUpdateResult?.success ? 'Status Updated Successfully' : 'Status Update Failed'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className={`p-4 rounded-lg border ${
+              statusUpdateResult?.success 
+                ? 'bg-green-50 border-green-200 text-green-800' 
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}>
+              <p className="text-sm">
+                {statusUpdateResult?.message}
+              </p>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={() => {
+                setShowStatusUpdateModal(false)
+                setStatusUpdateResult(null)
+              }}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )
