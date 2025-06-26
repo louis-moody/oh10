@@ -214,9 +214,18 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     )
   }
 
-  // fix: don't show connected state - handled by Header component (Cursor Rule 7)
+  // fix: show disconnect button when connected (Cursor Rule 7)
   if (isConnected && address && !isModalOpen) {
-    return null
+    return (
+      <Button 
+        onClick={handleDisconnect}
+        variant="outline"
+        className="flex items-center gap-2"
+      >
+        <LogOut className="w-4 h-4" />
+        Disconnect
+      </Button>
+    )
   }
 
   return (
