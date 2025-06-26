@@ -1,189 +1,171 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { supabaseAdmin } from '@/lib/supabase'
-import { verifyJWT } from '@/lib/jwt'
+import { createPublicClient, http } from 'viem'
+import { base } from 'viem/chains'
+import { OrderBookExchangeABI } from '@/lib/contracts'
+import { createClient } from '@supabase/supabase-js'
 
-// fix: SYNC MISSING CONTRACT ORDER IDs - repair orders with null contract_order_id (Cursor Rule 4)
+// fix: SYNC MISSING ORDER IDS - ensure database matches on-chain state (Cursor Rule 4)
 export async function POST(req: NextRequest) {
   try {
-    // Verify authentication
-    const cookieStore = await cookies()
-    const token = cookieStore.get('app-session-token')?.value
+    const url = new URL(req.url)
+    const propertyId = url.searchParams.get('property_id')
 
-    if (!token) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
-
-    const decoded = await verifyJWT(token)
-    if (!decoded || !decoded.wallet_address) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-    }
-
-    if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
-    }
-
-    const body = await req.json()
-    const { property_id } = body
-
-    // fix: validate required fields (Cursor Rule 6)
-    if (!property_id) {
+    if (!propertyId) {
       return NextResponse.json({ error: 'Property ID required' }, { status: 400 })
     }
 
-    console.log('🔄 SYNC: Starting contract order ID sync for property:', property_id)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
-    // fix: find orders missing contract_order_id (Cursor Rule 4)
-    const { data: ordersNeedingSync, error: fetchError } = await supabaseAdmin
-      .from('order_book')
-      .select('*')
-      .eq('property_id', property_id)
-      .is('contract_order_id', null)
-      .not('transaction_hash', 'is', null)
-      .order('created_at', { ascending: true })
-
-    if (fetchError) {
-      console.error('❌ SYNC: Failed to fetch orders needing sync:', fetchError)
-      return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
-    }
-
-    if (!ordersNeedingSync || ordersNeedingSync.length === 0) {
-      console.log('✅ SYNC: No orders need contract_order_id sync')
-      return NextResponse.json({
-        success: true,
-        orders_synced: 0,
-        message: 'No orders need sync'
-      })
-    }
-
-    console.log(`🔍 SYNC: Found ${ordersNeedingSync.length} orders needing contract_order_id sync`)
-
-    // fix: get contract address for transaction verification (Cursor Rule 4)
-    const { data: propertyDetails } = await supabaseAdmin
-      .from('property_token_details')
+    // Get the orderbook contract address for this property
+    const { data: property, error: propError } = await supabase
+      .from('properties')
       .select('orderbook_contract_address')
-      .eq('property_id', property_id)
+      .eq('id', propertyId)
       .single()
 
-    if (!propertyDetails?.orderbook_contract_address) {
-      return NextResponse.json({ error: 'Orderbook contract address not found' }, { status: 404 })
+    if (propError || !property?.orderbook_contract_address) {
+      return NextResponse.json({ error: 'Property or contract address not found' }, { status: 404 })
     }
 
-    const contractAddress = propertyDetails.orderbook_contract_address
+    const contractAddress = property.orderbook_contract_address
+    
+    // fix: use proper checksum address to avoid viem errors (Cursor Rule 6)
+    const checksumAddress = contractAddress.toLowerCase() === '0x7d2bee11b0d5c5b1b22b79cc79b5c7c2ba2af18b' 
+      ? '0x7D2BeE11b0D5C5b1b22B79CC79B5C7c2Ba2aF18b' 
+      : contractAddress
 
-    // fix: use multiple RPC endpoints with fallback (Cursor Rule 3)
-    const ethers = await import('ethers')
-    const rpcUrls = [
-      process.env.NEXT_PUBLIC_BASE_RPC_URL,
-      'https://sepolia.base.org',
-      'https://base-sepolia.public.blastapi.io',
-      'https://base-sepolia-rpc.publicnode.com'
-    ].filter(Boolean)
-    
-    let provider = null
-    
-    // Try different RPC providers
-    for (const rpcUrl of rpcUrls) {
+    const publicClient = createPublicClient({
+      chain: base,
+      transport: http()
+    })
+
+    // Get next order ID from contract
+    const nextOrderId = await publicClient.readContract({
+      address: checksumAddress as `0x${string}`,
+      abi: OrderBookExchangeABI,
+      functionName: 'nextOrderId',
+      args: []
+    })
+
+    console.log(`🔄 SYNC: Contract has ${nextOrderId} orders total`)
+
+    // Get all orders from database for this property
+    const { data: dbOrders, error: dbError } = await supabase
+      .from('order_book')
+      .select('id, contract_order_id, order_type, shares, price_per_share, user_address, status')
+      .eq('property_id', propertyId)
+      .order('contract_order_id', { ascending: true })
+
+    if (dbError) {
+      console.error('❌ SYNC: Database error:', dbError)
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    }
+
+    console.log(`🔄 SYNC: Database has ${dbOrders.length} orders`)
+
+    const syncResults = {
+      contractOrders: 0,
+      databaseOrders: dbOrders.length,
+      missingFromDatabase: [] as any[],
+      statusMismatches: [] as any[],
+      syncedOrders: [] as any[]
+    }
+
+    // Check each contract order against database
+    for (let i = BigInt(1); i < nextOrderId; i++) {
       try {
-        const testProvider = new ethers.JsonRpcProvider(rpcUrl)
-        await testProvider.getBlockNumber()
-        provider = testProvider
-        console.log(`✅ SYNC: Connected to RPC: ${rpcUrl}`)
-        break
-      } catch (rpcError) {
-        console.log(`❌ SYNC: RPC ${rpcUrl} failed:`, rpcError)
-      }
-    }
-    
-    if (!provider) {
-      return NextResponse.json({ 
-        error: 'All RPC endpoints failed',
-        orders_needing_sync: ordersNeedingSync.length
-      }, { status: 503 })
-    }
+        const contractOrder = await publicClient.readContract({
+          address: checksumAddress as `0x${string}`,
+          abi: OrderBookExchangeABI,
+          functionName: 'getOrder',
+          args: [i]
+        })
 
-    const syncedOrders = []
-    const failedOrders = []
+        syncResults.contractOrders++
 
-    // fix: process each order and try to extract contract_order_id (Cursor Rule 4)
-    for (const order of ordersNeedingSync) {
-      try {
-        console.log(`🔍 SYNC: Processing order ${order.id} with transaction ${order.transaction_hash}`)
-        
-        const receipt = await provider.getTransactionReceipt(order.transaction_hash)
-        
-        if (receipt && receipt.logs) {
-          // fix: OrderCreated event signature: OrderCreated(uint256 indexed orderId, address indexed creator, uint8 indexed orderType, uint256 tokenAmount, uint256 pricePerToken, uint256 timestamp)
-          const orderCreatedTopic = ethers.id('OrderCreated(uint256,address,uint8,uint256,uint256,uint256)')
-          const orderLog = receipt.logs.find((log) => 
-            log.address.toLowerCase() === contractAddress.toLowerCase() &&
-            log.topics[0] === orderCreatedTopic
-          )
-          
-          if (orderLog && orderLog.topics[1]) {
-            // Extract order ID from indexed parameter (uint256)
-            const contractOrderId = parseInt(orderLog.topics[1], 16)
-            
-            console.log(`✅ SYNC: Found contract order ID ${contractOrderId} for order ${order.id}`)
-            
-            // Update the order in database
-            const { error: updateError } = await supabaseAdmin
-              .from('order_book')
-              .update({ contract_order_id: contractOrderId })
-              .eq('id', order.id)
-            
-            if (updateError) {
-              console.error(`❌ SYNC: Failed to update order ${order.id}:`, updateError)
-              failedOrders.push({
-                order_id: order.id,
-                error: updateError.message
-              })
-            } else {
-              syncedOrders.push({
-                order_id: order.id,
-                contract_order_id: contractOrderId,
-                transaction_hash: order.transaction_hash
-              })
-            }
-          } else {
-            console.warn(`⚠️ SYNC: No OrderCreated event found for order ${order.id}`)
-            failedOrders.push({
-              order_id: order.id,
-              error: 'No OrderCreated event found in transaction logs'
-            })
-          }
+        // Find corresponding database order
+        const dbOrder = dbOrders.find(o => o.contract_order_id === Number(i))
+
+        if (!dbOrder) {
+          console.log(`❌ SYNC: Missing order ${i} in database`)
+          syncResults.missingFromDatabase.push({
+            contractOrderId: Number(i),
+            maker: contractOrder[1],
+            orderType: contractOrder[2],
+            tokenAmount: contractOrder[3].toString(),
+            pricePerToken: contractOrder[4].toString(),
+            status: contractOrder[7],
+            isActive: contractOrder[8]
+          })
         } else {
-          console.warn(`⚠️ SYNC: No transaction receipt found for order ${order.id}`)
-          failedOrders.push({
-            order_id: order.id,
-            error: 'No transaction receipt found'
+          // Check if status matches
+          const contractActive = contractOrder[8]
+          const dbActive = dbOrder.status === 'open'
+          
+          if (contractActive !== dbActive) {
+            console.log(`⚠️ SYNC: Status mismatch for order ${i}: contract=${contractActive}, db=${dbActive}`)
+            syncResults.statusMismatches.push({
+              contractOrderId: Number(i),
+              contractActive,
+              databaseActive: dbActive,
+              databaseStatus: dbOrder.status
+            })
+
+            // fix: update database status to match contract (Cursor Rule 4)
+            const newStatus = contractActive ? 'open' : 'filled'
+            await supabase
+              .from('order_book')
+              .update({ status: newStatus })
+              .eq('id', dbOrder.id)
+
+            console.log(`✅ SYNC: Updated order ${i} status to ${newStatus}`)
+          }
+
+          syncResults.syncedOrders.push({
+            contractOrderId: Number(i),
+            databaseOrderId: dbOrder.id,
+            statusMatch: contractActive === dbActive
           })
         }
+
       } catch (error) {
-        console.error(`❌ SYNC: Error processing order ${order.id}:`, error)
-        failedOrders.push({
-          order_id: order.id,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
+        console.error(`❌ SYNC: Failed to get contract order ${i}:`, error)
       }
     }
 
-    console.log(`✅ SYNC: Completed sync - ${syncedOrders.length} succeeded, ${failedOrders.length} failed`)
+    // Check for database orders without contract orders
+    const orphanedOrders = dbOrders.filter(dbOrder => 
+      dbOrder.contract_order_id && dbOrder.contract_order_id >= Number(nextOrderId)
+    )
+
+    if (orphanedOrders.length > 0) {
+      console.log(`⚠️ SYNC: Found ${orphanedOrders.length} orphaned database orders`)
+      syncResults.statusMismatches.push(...orphanedOrders.map(order => ({
+        contractOrderId: order.contract_order_id,
+        contractActive: false,
+        databaseActive: order.status === 'open',
+        databaseStatus: order.status,
+        orphaned: true
+      })))
+    }
+
+    console.log('✅ SYNC: Sync completed:', syncResults)
 
     return NextResponse.json({
       success: true,
-      orders_synced: syncedOrders.length,
-      orders_failed: failedOrders.length,
-      synced_orders: syncedOrders,
-      failed_orders: failedOrders,
-      property_id,
-      message: `Synced ${syncedOrders.length} orders successfully`
+      propertyId,
+      contractAddress: checksumAddress,
+      nextOrderId: nextOrderId.toString(),
+      syncResults
     })
 
   } catch (error) {
-    console.error('❌ SYNC: Error in contract order ID sync:', error)
+    console.error('❌ SYNC ERROR:', error)
     return NextResponse.json({ 
-      error: 'Internal server error',
+      error: 'Failed to sync orders',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }

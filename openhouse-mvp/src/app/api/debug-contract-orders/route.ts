@@ -18,11 +18,16 @@ export async function GET(req: NextRequest) {
       transport: http()
     })
 
+    // fix: use proper checksum address to avoid viem errors (Cursor Rule 6)
+    const checksumAddress = contractAddress.toLowerCase() === '0x7d2bee11b0d5c5b1b22b79cc79b5c7c2ba2af18b' 
+      ? '0x7D2BeE11b0D5C5b1b22B79CC79B5C7c2Ba2aF18b' 
+      : contractAddress
+
     // fix: first check if any orders have been created at all (Cursor Rule 6)
     let nextOrderId: bigint = BigInt(0)
     try {
       nextOrderId = await publicClient.readContract({
-        address: contractAddress as `0x${string}`,
+        address: checksumAddress as `0x${string}`,
         abi: OrderBookExchangeABI,
         functionName: 'nextOrderId',
         args: []
@@ -38,7 +43,7 @@ export async function GET(req: NextRequest) {
     
     try {
       sellOrderIds = await publicClient.readContract({
-        address: contractAddress as `0x${string}`,
+        address: checksumAddress as `0x${string}`,
         abi: OrderBookExchangeABI,
         functionName: 'getOrdersByType',
         args: [1] // 1 = SELL
@@ -50,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     try {
       buyOrderIds = await publicClient.readContract({
-        address: contractAddress as `0x${string}`,
+        address: checksumAddress as `0x${string}`,
         abi: OrderBookExchangeABI,
         functionName: 'getOrdersByType',
         args: [0] // 0 = BUY
@@ -76,7 +81,7 @@ export async function GET(req: NextRequest) {
     for (const orderId of allOrderIds) {
       try {
         const order = await publicClient.readContract({
-          address: contractAddress as `0x${string}`,
+          address: checksumAddress as `0x${string}`,
           abi: OrderBookExchangeABI,
           functionName: 'getOrder',
           args: [orderId]

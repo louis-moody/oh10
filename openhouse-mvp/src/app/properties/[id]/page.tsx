@@ -804,7 +804,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             {!isPropertyLive(property.status) && (
               <Card className="p-0 mt-0">
                 <CardContent className="p-0">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 px-6 bg-openhouse-bg-muted rounded-md">
                     <div>
                       <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
                       <p className="font-semibold text-openhouse-fg">{property.total_shares.toLocaleString()}</p>
@@ -813,55 +813,65 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                       <p className="text-sm text-openhouse-fg-muted">Price Per Share</p>
                       <p className="font-semibold text-openhouse-fg">{formatCurrency(property.price_per_token)}</p>
                     </div>
-                  </div>
-                  
-                  <div className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-medium text-openhouse-fg-muted mb-3">Funding Progress</h3>
-                      <div className="flex justify-between items-baseline mb-2">
-                        <div>
-                          <p className="text-xs text-openhouse-fg-muted">Current funding</p>
-                          <p className="text-lg font-semibold text-openhouse-fg">{formatCurrency(fundingProgress.raised_amount)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-openhouse-fg-muted">Goal</p>
-                          <p className="text-lg font-semibold text-openhouse-fg">{formatCurrency(property.funding_goal_usdc)}</p>
-                        </div>
-                      </div>
-                      <div className="w-full bg-openhouse-bg-muted rounded-full h-2 mb-2">
-                        <div 
-                          className="bg-openhouse-accent h-2 rounded-full transition-all duration-300" 
-                          style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs text-openhouse-fg-muted">
-                          {fundingProgress.progress_percentage.toFixed(1)}% funded
-                        </p>
-                        <div className="flex items-center gap-1 text-xs text-openhouse-fg-muted">
-                          <Clock className="w-3 h-3" />
-                          <span>Deadline: {formatDeadline(property.funding_deadline)}</span>
-                        </div>
-                      </div>
+                      <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+                      <p className="font-semibold text-openhouse-fg">
+                        {propertyFinancials?.annual_yield_pct 
+                          ? `${propertyFinancials.annual_yield_pct.toFixed(1)}%` 
+                          : 'TBD'
+                        }
+                      </p>
                     </div>
                   </div>
-
-                  {canReserve() ? (
-                    <Button 
-                      onClick={() => setIsReservationModalOpen(true)}
-                      className="w-full"
-                      disabled={!isConnected}
-                    >
-                      {isConnected ? 'Reserve Shares' : 'Connect Wallet to Reserve'}
-                    </Button>
-                  ) : (
-                    <Button disabled className="w-full">
-                      {property.status !== 'active' ? 'Funding Closed' :
-                       fundingProgress.progress_percentage >= 100 ? 'Fully Funded' :
-                       isDeadlinePassed(property.funding_deadline) ? 'Deadline Passed' :
-                       'Connect Wallet'}
-                    </Button>
-                  )}
+                  
+                  <div className="space-y-6 my-4 mb-0">            
+                    <div className="space-y-4 my-4">
+                      {canReserve() ? (
+                        <Button 
+                          onClick={() => setIsReservationModalOpen(true)}
+                          className="w-full"
+                          disabled={!isConnected}
+                        >
+                          {isConnected ? 'Reserve Shares' : 'Connect Wallet to Reserve'}
+                        </Button>
+                      ) : (
+                        <Button disabled className="w-full">
+                          {property.status !== 'active' ? 'Funding Closed' :
+                          fundingProgress.progress_percentage >= 100 ? 'Fully Funded' :
+                          isDeadlinePassed(property.funding_deadline) ? 'Deadline Passed' :
+                          'Connect Wallet'}
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {/* Active Funding Badge 
+                    <div className="mb-4">
+                      <span className="inline-flex items-center px-0 py-1 text-sm font-medium bg-openhouse-accent/10 text-openhouse-accent">
+                        <div className="w-2 h-2 bg-openhouse-accent mr-2 animate-pulse"></div>
+                        Active Funding
+                      </span>
+                    </div>*/}
+                    
+                    <div className="flex items-center gap-8">
+                      <div className="flex flex-col items-start gap-1">
+                        <h3 className="text-sm text-openhouse-fg-muted">Current Funding:</h3>
+                        <p className="text-2xl font-semibold text-openhouse-fg">
+                          {/*{fundingProgress.progress_percentage.toFixed(0)}% */}
+                          {formatCurrency(fundingProgress.raised_amount)} <span className="text-sm text-openhouse-fg-muted">of {formatCurrency(property.funding_goal_usdc)}</span>
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1 text-sm text-openhouse-fg-muted">
+                        <h3 className="text-sm text-openhouse-fg-muted">Ends In:</h3>
+                        <p className="text-2xl font-semibold text-openhouse-fg">{formatDeadline(property.funding_deadline)}</p>
+                      </div>
+                    </div>
+                    <div className="w-full bg-openhouse-button-secondary rounded-full h-2 mt-4 mb-2">
+                      <div 
+                        className="bg-openhouse-accent h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
+                      />
+                    </div>
+                  </div>
 
                   {existingReservation && (
                     <div className="p-3 bg-openhouse-accent/10 border border-openhouse-accent/20">
