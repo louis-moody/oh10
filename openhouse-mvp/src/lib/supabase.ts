@@ -29,6 +29,7 @@ export interface Property {
   funding_goal_usdc: number
   funding_deadline: string
   status: 'active' | 'funded' | 'completed' | 'draft' | 'live'
+  token_symbol?: string
   created_at: string
   updated_at: string
 }

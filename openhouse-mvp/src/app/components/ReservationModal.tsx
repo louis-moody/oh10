@@ -9,6 +9,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Card, CardContent } from './ui/card'
+import Image from 'next/image'
 
 import { type Property } from '@/lib/supabase'
 import { getUsdcAddress, USDC_ABI, getUserUsdcInfo } from '@/lib/contracts'
@@ -369,7 +370,7 @@ export function ReservationModal({
     if (existingReservation) {
       return 'Your Reservation'
     }
-    return 'Reserve Property Shares'
+    return 'Reserve Shares'
   }
 
   // fix: determine button text based on flow state (Cursor Rule 4)
@@ -408,31 +409,33 @@ export function ReservationModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5" />
             {getModalTitle()}
           </DialogTitle>
+          <p className="text-sm text-openhouse-fg-muted">
+            By reserving, you approve OpenHouse to collect USDC when funding is complete. No payment is taken until the funding goal is reached.
+          </p>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Property Info */}
+          {/* Property Info 
           <Card>
             <CardContent className="pt-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-openhouse-fg-muted">Property</span>
-                  <span className="font-medium text-openhouse-fg">{property.name}</span>
+              <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 px-6 bg-openhouse-bg-muted rounded-md">
+                <div className="text-sm">
+                  <p className="text-openhouse-fg-muted">Property</p>
+                  <p className="font-medium text-openhouse-fg">{property.name}</p>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-openhouse-fg-muted">Price per Share</span>
-                  <span className="font-medium text-openhouse-fg">{formatCurrency(property.price_per_token)}</span>
+                <div className="text-sm">
+                  <p className="text-openhouse-fg-muted">Price per Share</p>
+                  <p className="font-medium text-openhouse-fg">{formatCurrency(property.price_per_token)}</p>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-openhouse-fg-muted">Available Shares</span>
-                  <span className="font-medium text-openhouse-fg">{getAvailableShares().toLocaleString()}</span>
+                <div className="text-sm">
+                  <p className="text-openhouse-fg-muted">Available</p>
+                  <p className="font-medium text-openhouse-fg">{getAvailableShares().toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Existing Reservation Display */}
           {existingReservation && (
@@ -504,15 +507,14 @@ export function ReservationModal({
                   <div className="inline-flex items-center gap-1 bg-openhouse-bg-muted text-openhouse-fg pl-2 pr-4 py-2 rounded-full">
                     {inputType === 'usdc' ? (
                       <>
-                        <DollarSign className="w-4 h-4" />
+                        <Image src="/crypto/usdc.svg" alt="USDC" width={20} height={20} />
                         <span className="font-medium text-sm">USDC</span>
                       </>
-                    ) : (
-                      <>
-                        <Calculator className="w-4 h-4" />
-                        <span className="font-medium text-sm">Shares</span>
-                      </>
-                    )}
+                                          ) : (
+                        <>
+                          <span className="font-medium text-sm">{property.token_symbol || `OH${property.id.slice(-2).toUpperCase()}`}</span>
+                        </>
+                      )}
                   </div>
                   
                   <div className="flex flex-col items-end">
@@ -521,7 +523,7 @@ export function ReservationModal({
                       value={inputType === 'usdc' ? usdcAmount : shareAmount}
                       onChange={(e) => handleInputChange(e.target.value, inputType)}
                       placeholder="0"
-                      className="text-right text-3xl font-medium rounded-none border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="text-right md:text-3xl text-3xl font-medium rounded-none border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       min="0"
                       step={inputType === 'usdc' ? "0.01" : "1"}
                       disabled={flowState !== 'input' && flowState !== 'error'}
@@ -545,7 +547,6 @@ export function ReservationModal({
                 <Card>
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <Calculator className="w-4 h-4 text-openhouse-accent" />
                       <span className="text-sm font-medium text-openhouse-fg">Reservation Summary</span>
                     </div>
                     <div className="space-y-2 text-sm">
@@ -568,14 +569,6 @@ export function ReservationModal({
             </div>
           )}
 
-          {/* User Balance */}
-          <div className="p-3 bg-openhouse-bg-muted rounded-lg">
-            <div className="flex justify-between text-sm">
-              <span className="text-openhouse-fg-muted">Your USDC Balance</span>
-              <span className="font-medium text-openhouse-fg">{formatUsdcBalance(userUsdcBalance)}</span>
-            </div>
-          </div>
-
           {/* Flow State Indicators */}
           {flowState === 'approving' && (
             <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
@@ -590,7 +583,7 @@ export function ReservationModal({
             <div className="flex items-center gap-2 p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-lg">
               <Loader2 className="w-4 h-4 text-openhouse-accent animate-spin flex-shrink-0" />
               <span className="text-sm text-openhouse-accent">
-                Storing your reservation...
+                Storing your reservation
               </span>
             </div>
           )}
@@ -662,8 +655,6 @@ export function ReservationModal({
 
           {/* Info Note */}
           <div className="text-xs text-openhouse-fg-muted text-center space-y-1">
-            <p>By reserving, you approve OpenHouse to collect USDC when funding is complete.</p>
-            <p>No payment is taken until the funding goal is reached.</p>
             {existingReservation && existingReservation.payment_status !== 'transferred' && (
               <p className="text-openhouse-accent font-medium">You can cancel your reservation at any time before funding closes.</p>
             )}

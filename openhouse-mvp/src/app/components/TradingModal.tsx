@@ -18,6 +18,7 @@ interface TradingModalProps {
     id: string
     name: string
     price_per_token: number
+    token_symbol: string
     total_shares: number
     status: string
     contract_address?: string
@@ -1009,7 +1010,7 @@ export function TradingModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md md:max-w-md max-h-[80vh] gap-0 overflow-y-auto p-5 m-0">
         <DialogHeader>
-          <DialogTitle className="sr-only">Buy Now - {property.name}</DialogTitle>
+          <DialogTitle className="sr-only">Buy Now</DialogTitle>
         </DialogHeader>
         {/* Trade Type Dropdown */}
         <div className="relative">
@@ -1102,17 +1103,16 @@ export function TradingModal({
                   {activeTab === 'sell' && (
                     <div className="space-y-4">
                       {/* SummerFi-style input container */}
-                      <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="border border-openhouse-border rounded-md p-4">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm text-gray-600">Deposit token</span>
-                          <span className="text-sm text-gray-600">Balance: {formatTokenBalance()} tokens</span>
+                          <span className="text-sm text-openhouse-fg-muted">Token Symbol</span>
+                          <span className="text-sm text-openhouse-fg-muted">Balance: {formatTokenBalance()} {property.token_symbol}</span>
                         </div>
                         
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2 bg-gray-800 text-white px-3 py-2 rounded-lg">
-                              <Building2 className="w-5 h-5" />
-                              <span className="font-medium">{property.name}</span>
+                            <div className="flex items-center gap-2 bg-openhouse-bg-muted text-openhouse-fg px-3 py-2 rounded-full">
+                              <span className="font-medium">{property.token_symbol}</span>
                             </div>
                           </div>
                           
@@ -1122,12 +1122,12 @@ export function TradingModal({
                               value={shareAmount}
                               onChange={(e) => setShareAmount(e.target.value)}
                               placeholder="0"
-                              className="text-right text-2xl font-medium border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="text-right md:text-3xl text-3xl rounded-none font-medium border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               min="0"
                               step="0.01"
                               autoFocus={activeTab === 'sell'}
                             />
-                            <span className="text-sm text-gray-500 mt-1">
+                            <span className="text-sm text-openhouse-fg-muted mt-1">
                               ${formatCurrency(calculateProceeds())}
                             </span>
                           </div>
@@ -1149,7 +1149,7 @@ export function TradingModal({
                   )}
 
                   {activeTab === 'sell' && shareAmount && parseFloat(shareAmount) > 0 && (
-                    <div className="bg rounded-md p-3">
+                    <div className="bg-openhouse-bg-muted rounded-md p-3">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-openhouse-fg-muted">You get:</span>
                         <span className="text-sm font-medium text-openhouse-fg">
@@ -1231,7 +1231,7 @@ export function TradingModal({
                   
                   {/* Show transaction progress info when we have a hash */}
                   {hash && transactionStep === 'trading' && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
+                    <div className="bg-openhouse-bg-muted border border-openhouse-border rounded-lg p-3 mt-3">
                       <div className="flex items-start gap-2">
                         <Loader2 className="h-4 w-4 text-gray-500 mt-0.5 flex-shrink-0 animate-spin" />
                         <div className="text-left">
@@ -1239,8 +1239,8 @@ export function TradingModal({
                           <p className="text-xs text-gray-600 mt-1">
                             Processing your {activeTab} order on the blockchain...
                           </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Hash: <code className="text-xs bg-gray-100 px-1 rounded">{hash?.slice(0, 8)}...{hash?.slice(-6)}</code>
+                          <p className="text-xs text-openhouse-fg-muted mt-1">
+                            Hash: <code className="text-xs bg-openhouse-bg-muted px-1 rounded">{hash?.slice(0, 8)}...{hash?.slice(-6)}</code>
                           </p>
                         </div>
                       </div>
