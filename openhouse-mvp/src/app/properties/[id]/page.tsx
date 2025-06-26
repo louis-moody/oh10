@@ -389,9 +389,9 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
 
     return (
-      <Card>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 bg-openhouse-bg-muted rounded-lg">
+      <Card className="p-0 mt-0">
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 bg-openhouse-bg-muted rounded-md">
             <div>
               <p className="text-sm text-openhouse-fg-muted">Available</p>
               <p className="font-semibold text-openhouse-fg">
@@ -446,28 +446,28 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       <div className="space-y-6">
         <div>
           <div>
-            <div className="space-y-2">
-              <div className="flex justify-between">
+            <div>
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Type</span>
                 <span className="text-openhouse-fg">{propertyDetails.property_type}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Bedrooms</span>
                 <span className="text-openhouse-fg">{propertyDetails.bedrooms}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Bathrooms</span>
                 <span className="text-openhouse-fg">{propertyDetails.bathrooms}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Square Footage</span>
                 <span className="text-openhouse-fg">{propertyDetails.square_footage?.toLocaleString()} sq ft</span>
               </div>
-              <div>
-                <span className="text-openhouse-fg-muted block">Address</span>
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
+                <span className="text-openhouse-fg-muted">Address</span>
                 <span className="text-openhouse-fg">{propertyDetails.full_address}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">City</span>
                 <span className="text-openhouse-fg">{propertyDetails.city}</span>
               </div>
@@ -517,51 +517,51 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
 
     return (
-      <div className="space-y-6">
+      <div>
         <div>
           <div>
-            <div className="space-y-2">
-              <div className="flex justify-between">
+            <div>
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Property Value</span>
                 <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.property_value)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Price Per Share</span>
                 <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.price_per_share)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Net Operating Income</span>
                 <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.net_operating_income)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Expense Ratio</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.expense_ratio * 100)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Vacancy Rate</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.vacancy_rate * 100)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Cap Rate</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cap_rate)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">ROI</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.roi)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Cash on Cash</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.cash_on_cash)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Monthly Income</span>
                 <span className="text-openhouse-fg">{formatCurrency(propertyFinancials.monthly_income)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Annual Yield</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_yield_pct)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-4 border-b border-openhouse-border text-sm">
                 <span className="text-openhouse-fg-muted">Annual Return</span>
                 <span className="text-openhouse-fg">{formatPercentage(propertyFinancials.annual_return)}</span>
               </div>
@@ -602,7 +602,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               
               <div>
                 {/* Activity Title */}
-                <p className="font-medium text-openhouse-fg">
+                <p className="font-medium text-sm text-openhouse-fg">
                   {activity.activity_type === 'buy_order' && 'Buy order placed by'}
                   {activity.activity_type === 'sell_order' && 'Sell order placed by'}
                   {activity.activity_type === 'trade_executed' && 'Trade executed by'}
@@ -625,7 +625,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                         rel="noopener noreferrer"
                         className="text-openhouse-accent hover:underline inline-flex items-center gap-1"
                       >
-                        View transaction ↗
+                        View transaction
                       </Link>
                     </>
                   )}
@@ -634,10 +634,10 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             </div>
             
             {/* Price/Amount */}
-            <div className="text-right">
+            <div className="text-right text-sm">
               {activity.share_count && activity.price_per_share && (
                 <>
-                  <p className="font-semibold text-openhouse-fg">
+                  <p className="text-openhouse-fg text-sm">
                     {formatCurrency(activity.price_per_share)}
                   </p>
                   <p className="text-sm text-openhouse-fg-muted">
@@ -646,7 +646,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 </>
               )}
               {activity.total_amount && !activity.price_per_share && (
-                <p className="font-semibold text-openhouse-fg">
+                <p className="text-openhouse-fg text-sm">
                   {formatCurrency(activity.total_amount)}
                 </p>
               )}
@@ -660,7 +660,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-openhouse-bg">
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4">
           <div className="animate-pulse">
             <div className="h-8 bg-openhouse-bg-muted rounded mb-4 w-32"></div>
             <div className="h-12 bg-openhouse-bg-muted rounded mb-8 w-64"></div>
@@ -696,15 +696,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
   return (
     <div className="min-h-screen bg-openhouse-bg">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4">
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content - Property Image Only */}
           <div className="lg:col-span-2 space-y-6">
             {/* Property Image */}
             <Card>
-              <CardContent className="pt-8 px-20">
-                <div className="aspect-[1/1] relative overflow-hidden rounded-sm h-full">
+              <CardContent className="p-20">
+                <div className="relative overflow-hidden rounded-sm h-[900px]">
                   {property.image_url ? (
                     <Image
                       src={property.image_url}
@@ -726,20 +726,22 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           </div>
 
           {/* Right Sidebar - Property Details + Tabs */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-6 pl-20 pt-10 border-l border-openhouse-border">
             {/* Property Header */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="pt-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-3">
                   {isPropertyLive(property.status) ? (
-                    <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setIsTokenInfoModalOpen(true)}
-                      className="font-heading text-2xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
-                    >
-                      {property.name}
-                    </button>
-                    <p className="font-semibold text-openhouse-fg">{tokenDetails?.token_symbol}</p>
+                    <div className="flex flex-col items-start gap-3">
+                      <div>
+                        <button
+                          onClick={() => setIsTokenInfoModalOpen(true)}
+                          className="font-heading text-4xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
+                        >
+                          {property.name}
+                        </button>
+                      </div>
+                      <p className="text-openhouse-fg-muted">{tokenDetails?.token_symbol}</p>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3">
@@ -760,14 +762,14 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
             {/* Basic Property Details (Non-Live Properties) */}
             {!isPropertyLive(property.status) && (
-              <Card>
+              <Card className="p-0 mt-0">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Building2 className="w-5 h-5 text-openhouse-accent" />
                     Investment Details
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="p-0">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
@@ -780,7 +782,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   </div>
                   
                   <div>
-                    <div className="flex justify-between items-center mb-2">
+                    <div className="flex justify-between py-4 border-b border-openhouse-border text-sm items-center mb-2">
                       <span className="text-sm text-openhouse-fg-muted">Funding Progress</span>
                       <span className="text-sm font-medium text-openhouse-fg">
                         {formatCurrency(fundingProgress.raised_amount)} / {formatCurrency(property.funding_goal_usdc)}
@@ -820,7 +822,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   )}
 
                   {existingReservation && (
-                    <div className="p-3 bg-openhouse-accent/10 rounded-lg border border-openhouse-accent/20">
+                    <div className="p-3 bg-openhouse-accent/10 border border-openhouse-accent/20">
                       <p className="text-sm font-medium text-openhouse-accent mb-1">Your Reservation</p>
                       <p className="text-xs text-openhouse-fg-muted">
                         {existingReservation.token_amount} shares • {formatCurrency(existingReservation.usdc_amount)}
@@ -835,16 +837,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             )}
 
             {/* Tabbed Content - Now in Right Sidebar */}
-            <Card>
-              <CardHeader>
-                <div className="flex space-x-1 bg-openhouse-bg-muted rounded-lg p-1">
+            <Card className="p-0 mt-0 gap-0">
+              <CardHeader className="p-0">
+                <div className="flex flex-row justify-start">
                   {(['details', 'financials', 'activity'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      className={`px-4 py-2 text-sm font-medium transition-colors ${
                         activeTab === tab
-                          ? 'bg-openhouse-bg text-openhouse-fg shadow-sm'
+                          ? 'bg-openhouse-bg-muted text-openhouse-fg rounded-sm'
                           : 'text-openhouse-fg-muted hover:text-openhouse-fg'
                       }`}
                     >

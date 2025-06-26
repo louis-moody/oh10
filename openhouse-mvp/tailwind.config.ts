@@ -10,9 +10,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-geist-sans)'],
-        mono: ['var(--font-geist-mono)'],
-        heading: ['var(--font-geist-sans)'],
+        sans: ['var(--font-inter)'],
+        mono: ['var(--font-mono)'],
+        heading: ['var(--font-inter)'],
       },
       colors: {
         // ShadCN base colors (using CSS custom properties directly)
@@ -61,6 +61,7 @@ const config: Config = {
         'openhouse-bg': 'var(--openhouse-bg)',
         'openhouse-fg': 'var(--openhouse-fg)',
         'openhouse-bg-muted': 'var(--openhouse-bg-muted)',
+        'openhouse-bg-secondary': 'var(--openhouse-bg-muted)', // fix: add secondary bg for hover states (Cursor Rule 13)
         'openhouse-fg-muted': 'var(--openhouse-fg-muted)',
         'openhouse-accent': 'var(--openhouse-accent)',
         'openhouse-accent-fg': 'var(--openhouse-accent-fg)',

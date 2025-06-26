@@ -230,26 +230,6 @@ export function PropertyCard({ property }: PropertyCardProps) {
             </div>
           )}
         </div>
-
-        {completedStats.rentalIncomeToDate > 0 && (
-          <div className="flex items-center gap-2 text-sm">
-            <PiggyBank className="w-4 h-4 text-openhouse-accent" />
-            <span className="text-openhouse-fg-muted">Income to Date:</span>
-            <span className="font-medium text-openhouse-fg">
-              {formatCurrency(completedStats.rentalIncomeToDate)}
-            </span>
-          </div>
-        )}
-
-        {completedStats.userHoldings > 0 && (
-          <div className="flex items-center gap-2 text-sm">
-            <Coins className="w-4 h-4 text-openhouse-accent" />
-            <span className="text-openhouse-fg-muted">Your Holdings:</span>
-            <span className="font-medium text-openhouse-fg">
-              {completedStats.userHoldings.toLocaleString()} tokens
-            </span>
-          </div>
-        )}
       </CardContent>
     )
   }
@@ -293,15 +273,15 @@ export function PropertyCard({ property }: PropertyCardProps) {
   )
 
   return (
-    <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200">
+    <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200 ">
       <Link href={`/properties/${id}`} className="block h-full">
-        <div className="aspect-[4/3] relative overflow-hidden bg-openhouse-bg-muted">
+        <div className="aspect-[1/1] relative overflow-hidden bg-openhouse-bg-muted">
           {image_url ? (
             <Image
               src={image_url}
               alt={name}
               fill
-              className="object-cover group-hover:scale-105 transition-transform duration-300"
+              className="object-cover rounded-sm"
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
           ) : (
@@ -319,8 +299,8 @@ export function PropertyCard({ property }: PropertyCardProps) {
           </div>
         </div>
 
-        <CardHeader className="pb-2">
-          <h3 className="font-heading text-lg font-medium text-openhouse-fg group-hover:text-openhouse-accent transition-colors line-clamp-2">
+        <CardHeader className="py-2 px-0">
+          <h3 className="font-heading text-lg pl-0 font-medium text-openhouse-fg group-hover:text-openhouse-accent text-left transition-colors line-clamp-2">
             {name}
           </h3>
         </CardHeader>

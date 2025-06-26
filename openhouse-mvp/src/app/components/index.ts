@@ -11,6 +11,7 @@ export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 // Application components
 export { AuthenticationFlow } from './AuthenticationFlow'
 export { ConnectButton } from './ConnectButton'
+export { Header } from './Header'
 export { DarkModeToggle } from './DarkModeToggle'
 export { EmptyState } from './EmptyState'
 export { LoadingState } from './LoadingState'

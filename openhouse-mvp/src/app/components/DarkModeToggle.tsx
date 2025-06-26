@@ -45,7 +45,6 @@ export function DarkModeToggle() {
         className="gap-2 text-openhouse-fg-muted"
         disabled
       >
-        <span className="text-sm">🌙</span>
         <span className="text-sm">Dark Mode</span>
       </Button>
     )
@@ -59,7 +58,6 @@ export function DarkModeToggle() {
       className="gap-2 text-openhouse-fg-muted hover:text-openhouse-fg transition-colors"
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
     >
-      <span className="text-sm">{isDark ? '☀️' : '🌙'}</span>
       <span className="text-sm">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
     </Button>
   )

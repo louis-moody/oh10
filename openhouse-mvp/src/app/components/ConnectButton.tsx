@@ -214,24 +214,9 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     )
   }
 
-  // fix: only show connected state if modal is closed and user is authenticated (Cursor Rule 7)
+  // fix: don't show connected state - handled by Header component (Cursor Rule 7)
   if (isConnected && address && !isModalOpen) {
-    return (
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="px-3 py-1">
-          {address.slice(0, 6)}...{address.slice(-4)}
-        </Badge>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleDisconnect}
-          className="flex items-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          Disconnect
-        </Button>
-      </div>
-    )
+    return null
   }
 
   return (
