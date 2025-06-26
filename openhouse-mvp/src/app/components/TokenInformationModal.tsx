@@ -7,6 +7,7 @@ import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
 import { useChainId } from 'wagmi'
+import Image from 'next/image'
 
 interface TokenInformationModalProps {
   isOpen: boolean
@@ -60,14 +61,14 @@ export function TokenInformationModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Info className="w-5 h-5" />
+            <Image src="/crypto/usdc.svg" alt="USDC" width={20} height={20} />
             Token Information
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-0">
           {/* Property Info */}
-          <Card>
+          <Card className="p-0">
             <CardContent className="pt-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -90,7 +91,7 @@ export function TokenInformationModal({
 
           {/* Token Details */}
           {tokenDetails && (
-            <Card>
+            <Card className="p-0">
               <CardContent className="pt-4">
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
@@ -112,7 +113,7 @@ export function TokenInformationModal({
 
           {/* Contract Address */}
           {contractAddress && (
-            <Card>
+            <Card className="p-0">
               <CardContent className="pt-4">
                 <div className="space-y-3">
                   <div>
@@ -147,7 +148,7 @@ export function TokenInformationModal({
           )}
 
           {/* Trading Info */}
-          <Card>
+          <Card className="p-0">
             <CardContent className="pt-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -165,11 +166,6 @@ export function TokenInformationModal({
               </div>
             </CardContent>
           </Card>
-
-          {/* Close Button */}
-          <Button onClick={onClose} className="w-full">
-            Close
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

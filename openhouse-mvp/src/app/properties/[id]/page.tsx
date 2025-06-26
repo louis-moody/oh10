@@ -954,6 +954,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         onClose={() => setIsTradingModalOpen(false)}
         property={{
           ...property,
+          token_symbol: tokenDetails?.token_symbol || '',
           contract_address: tokenDetails?.contract_address,
           orderbook_contract_address: tokenDetails?.orderbook_contract_address
         }}
