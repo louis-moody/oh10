@@ -953,6 +953,16 @@ export function TradingModal({
     }
   }
 
+  const getButtonText = () => {
+    if (isPending || isConfirming || transactionStep !== 'idle') {
+      if (transactionStep === 'wallet_approval') return 'Please Sign Wallet...'
+      if (transactionStep === 'approving') return 'Approving...'
+      if (transactionStep === 'trading') return 'Processing...'
+      return 'Processing...'
+    }
+    return activeTab === 'buy' ? 'Buy Tokens' : 'Sell Tokens'
+  }
+
   if (!isOpen) return null
 
   // Show authentication required message
@@ -1154,18 +1164,10 @@ export function TradingModal({
                       (activeTab === 'sell' && !shareAmount) // fix: sell needs share amount (Cursor Rule 2)
                     }
                   >
-                    {isPending || isConfirming || transactionStep !== 'idle' ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {transactionStep === 'wallet_approval' ? 'Please Sign Wallet...' : 
-                         transactionStep === 'approving' ? 'Approving...' : 
-                         'Processing...'}
-                      </>
-                    ) : (
-                      <>
-                        {activeTab === 'buy' ? 'Buy Tokens' : 'Sell Tokens'}
-                      </>
+                    {(isPending || isConfirming || transactionStep !== 'idle') && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
+                    {getButtonText()}
                   </Button>
 
                   {error && (
