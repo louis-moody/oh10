@@ -391,7 +391,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     return (
       <Card className="p-0 mt-0">
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 bg-openhouse-bg-muted rounded-md">
+          <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 px-6 bg-openhouse-bg-muted rounded-md">
             <div>
               <p className="text-sm text-openhouse-fg-muted">Available</p>
               <p className="font-semibold text-openhouse-fg">
@@ -420,8 +420,9 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             {isConnected ? 'Trade Shares' : 'Connect Wallet to Trade'}
           </Button>
           
-          <div className="pt-4 border-t border-openhouse-border">
+          <div className="pt-0">
             <p className="text-openhouse-fg-muted text-sm">
+              {/* TODO: Add description field to properties or property_details table in Supabase */}
               This property represents a tokenized real estate investment opportunity. 
               Each token represents fractional ownership of the underlying property.
             </p>
@@ -703,7 +704,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           <div className="lg:col-span-2 space-y-6">
             {/* Property Image */}
             <Card>
-              <CardContent className="p-20">
+              <CardContent className="p-10">
                 <div className="relative overflow-hidden rounded-sm h-[900px]">
                   {property.image_url ? (
                     <Image
@@ -838,16 +839,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
 
             {/* Tabbed Content - Now in Right Sidebar */}
             <Card className="p-0 mt-0 gap-0">
-              <CardHeader className="p-0">
-                <div className="flex flex-row justify-start">
+              <CardHeader className="p-0 border-b gap-0 mb-0 border-openhouse-border">
+                <div className="flex flex-row gap-4 justify-start">
                   {(['details', 'financials', 'activity'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`px-4 py-2 text-sm font-medium transition-colors ${
+                      className={`py-2 text-sm font-medium transition-colors ${
                         activeTab === tab
-                          ? 'bg-openhouse-bg-muted text-openhouse-fg rounded-sm'
-                          : 'text-openhouse-fg-muted hover:text-openhouse-fg'
+                          ? 'bg-openhouse-bg text-openhouse-fg border-b-2 border-openhouse-accent'
+                          : 'text-openhouse-fg-muted hover:text-openhouse-fg border-b-1 border-transparent'
                       }`}
                     >
                       {tab.charAt(0).toUpperCase() + tab.slice(1)}

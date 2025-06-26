@@ -62,11 +62,8 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-0 py-0">
         <div className="mb-8">
-          <p className="text-openhouse-fg-muted text-lg">
-            Build your legacy
-          </p>
         </div>
         <LoadingState />
       </div>
@@ -75,11 +72,8 @@ export default function HomePage() {
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-0 py-0">
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-          <div className="w-16 h-16 rounded-full bg-openhouse-danger/10 flex items-center justify-center mb-4">
-            <AlertCircle className="w-8 h-8 text-openhouse-danger" />
-          </div>
           <h3 className="font-heading text-lg font-semibold text-openhouse-fg mb-2">
             Unable to load properties
           </h3>
@@ -100,7 +94,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-0 py-0">
 
       {properties.length === 0 ? (
         <EmptyState />

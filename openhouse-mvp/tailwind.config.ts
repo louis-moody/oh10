@@ -63,12 +63,14 @@ const config: Config = {
         'openhouse-bg-muted': 'var(--openhouse-bg-muted)',
         'openhouse-bg-secondary': 'var(--openhouse-bg-muted)', // fix: add secondary bg for hover states (Cursor Rule 13)
         'openhouse-fg-muted': 'var(--openhouse-fg-muted)',
+        'openhouse-primary': 'var(--openhouse-primary)', // fix: add missing primary color (Cursor Rule 13)
         'openhouse-accent': 'var(--openhouse-accent)',
         'openhouse-accent-fg': 'var(--openhouse-accent-fg)',
         'openhouse-border': 'var(--openhouse-border)',
         'openhouse-success': 'var(--openhouse-success)',
         'openhouse-warning': 'var(--openhouse-warning)',
         'openhouse-danger': 'var(--openhouse-danger)',
+        'openhouse-white': 'var(--openhouse-white)', // fix: add missing white color (Cursor Rule 13)
       },
       borderRadius: {
         lg: 'var(--radius)',

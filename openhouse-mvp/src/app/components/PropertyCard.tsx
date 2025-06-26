@@ -293,7 +293,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
           )}
           
           <div className="absolute top-3 right-3">
-            <Badge className={statusColors[status]} variant="outline">
+            <Badge variant="card">
               {status === 'completed' || status === 'live' ? 'Live' : status}
             </Badge>
           </div>
