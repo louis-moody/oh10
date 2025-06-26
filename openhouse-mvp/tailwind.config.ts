@@ -67,6 +67,7 @@ const config: Config = {
         
         // OpenHouse custom tokens
         'openhouse-bg': 'var(--openhouse-bg)',
+        'openhouse-button-secondary': 'var(--openhouse-button-secondary)',
         'openhouse-fg': 'var(--openhouse-fg)',
         'openhouse-bg-muted': 'var(--openhouse-bg-muted)',
         'openhouse-bg-secondary': 'var(--openhouse-bg-muted)', // fix: add secondary bg for hover states (Cursor Rule 13)

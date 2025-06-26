@@ -20,6 +20,7 @@
   --openhouse-warning: oklch(0.7 0.15 85);
   --openhouse-danger: oklch(0.55 0.2 25);
   --openhouse-white: oklch(0.998 0 0);
+  --openhouse-button-secondary: oklch(96.5% 0 0);
   
   --card: var(--openhouse-bg);
   --card-foreground: var(--openhouse-fg);

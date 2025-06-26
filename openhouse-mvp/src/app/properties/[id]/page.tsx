@@ -221,29 +221,41 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
   }
 
-  // fix: fetch property activity from order_book table (property_activity is broken) (Cursor Rule 4)
+  // fix: fetch property activity from both order_book and property_activity tables (Cursor Rule 4)
   const fetchPropertyActivity = async (propertyId: string) => {
     try {
       if (!supabase) return
 
-      const { data, error } = await supabase
+      // Get orders from order_book table
+      const { data: orderData, error: orderError } = await supabase
         .from('order_book')
         .select('*')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(25)
 
-      console.log('📊 Property activity fetch result from order_book:', { 
+      // Get executed trades from property_activity table
+      const { data: activityData, error: activityError } = await supabase
+        .from('property_activity')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false })
+        .limit(25)
+
+      console.log('📊 Property activity fetch results:', { 
         propertyId, 
-        count: data?.length || 0, 
-        data, 
-        error 
+        orderCount: orderData?.length || 0, 
+        activityCount: activityData?.length || 0,
+        orderError,
+        activityError
       })
 
-      if (!error && data) {
-        // Transform order_book data to match activity interface
-        const activityData = data.map(order => ({
-          id: order.id,
+      const combinedActivity = []
+
+      // Transform order_book data
+      if (!orderError && orderData) {
+        const orderActivity = orderData.map(order => ({
+          id: `order_${order.id}`,
           property_id: order.property_id,
           activity_type: (order.order_type === 'buy' ? 'buy_order' : 'sell_order') as 'buy_order' | 'sell_order',
           wallet_address: order.user_address,
@@ -253,10 +265,37 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           transaction_hash: order.transaction_hash,
           created_at: order.created_at
         }))
-        
-        setPropertyActivity(activityData)
-        console.log('✅ Property activity state updated with', activityData.length, 'records from order_book')
+        combinedActivity.push(...orderActivity)
       }
+
+      // Add property_activity data directly
+      if (!activityError && activityData) {
+        const formattedActivity = activityData.map(activity => ({
+          id: `activity_${activity.id}`,
+          property_id: activity.property_id,
+          activity_type: activity.activity_type,
+          wallet_address: activity.wallet_address,
+          share_count: activity.share_count,
+          price_per_share: activity.price_per_share,
+          total_amount: activity.total_amount,
+          transaction_hash: activity.transaction_hash,
+          created_at: activity.created_at
+        }))
+        combinedActivity.push(...formattedActivity)
+      }
+
+      // Sort by created_at and remove duplicates based on transaction_hash
+      const sortedActivity = combinedActivity
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .filter((activity, index, arr) => {
+          // Remove duplicates based on transaction hash
+          if (!activity.transaction_hash) return true
+          return arr.findIndex(a => a.transaction_hash === activity.transaction_hash) === index
+        })
+        .slice(0, 50) // Limit to 50 most recent
+        
+      setPropertyActivity(sortedActivity)
+      console.log('✅ Property activity state updated with', sortedActivity.length, 'combined records')
     } catch (error) {
       console.error('Failed to fetch property activity:', error)
     }

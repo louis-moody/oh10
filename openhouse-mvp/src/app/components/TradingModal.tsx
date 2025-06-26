@@ -45,7 +45,7 @@ export function TradingModal({
   const [wasExecutedInstantly, setWasExecutedInstantly] = useState<boolean>(false) // fix: track if order was executed vs placed (Cursor Rule 7)
 
   // fix: SIMPLE STATE TRACKING - no complex hash management (Cursor Rule 1)
-  const [transactionStep, setTransactionStep] = useState<'idle' | 'approving' | 'trading'>('idle')
+  const [transactionStep, setTransactionStep] = useState<'idle' | 'wallet_approval' | 'approving' | 'trading'>('idle')
   const [recordedHashes, setRecordedHashes] = useState<Set<string>>(new Set())
 
   const { address, isConnected, chainId } = useAccount()
@@ -145,8 +145,8 @@ export function TradingModal({
     console.log('🔄 TRADING MODAL: Unknown transaction step, ignoring')
   }, [hash, isConfirmed, transactionStep, activeTab, onTradeSuccess])
 
-  // fix: SHOW PROCESSING STATE when transaction is pending confirmation (Cursor Rule 7)
-  const isProcessingOnChain = hash && !isConfirmed && transactionStep === 'trading'
+  // fix: SHOW PROCESSING STATE only when transaction step is active, not based on flowState (Cursor Rule 7)
+  const isProcessingOnChain = transactionStep === 'wallet_approval' || transactionStep === 'approving' || transactionStep === 'trading'
 
   // fix: SIMPLIFIED BUY WITH APPROVAL (Cursor Rule 1)
   const executeBuyWithApproval = async () => {
@@ -155,7 +155,7 @@ export function TradingModal({
     try {
       setFlowState('executing')
       setError('')
-      setTransactionStep('approving') // Set step BEFORE calling writeContract
+      setTransactionStep('wallet_approval') // Show "Please sign wallet" first
 
       const ethers = await import('ethers')
       const usdcAmountWei = ethers.parseUnits(usdcAmount, 6)
@@ -185,6 +185,9 @@ export function TradingModal({
         functionName: 'approve',
         args: [property.orderbook_contract_address as `0x${string}`, totalAmount]
       })
+      
+      // Update to approval step after wallet interaction starts
+      setTransactionStep('approving')
 
     } catch (error) {
       console.error('❌ TRADING MODAL: Approval error:', error)
@@ -208,23 +211,9 @@ export function TradingModal({
         contractAddress: property.orderbook_contract_address
       })
 
-      // fix: fetch current market data to find executable sell orders (Cursor Rule 2)
-      const marketData = await fetch(`/api/orderbook/market-data?property_id=${property.id}`)
-      const marketDataJson = await marketData.json()
-      
-      console.log('🛒 TRADING MODAL: Market data:', {
-        availableShares: marketDataJson.available_shares,
-        sellOrdersCount: marketDataJson.sell_orders?.length || 0,
-        sellOrders: marketDataJson.sell_orders
-      })
-
-      if (marketDataJson.available_shares > 0 && marketDataJson.sell_orders?.length > 0) {
-        console.log('✅ TRADING MODAL: Found sell orders - executing against orderbook')
-        await executeInstantBuy(marketDataJson.sell_orders)
-      } else {
-        console.log('🛒 TRADING MODAL: No sell orders available - creating buy order')
-        await createBuyOrder()
-      }
+      // fix: ALWAYS CREATE BUY ORDER - skip instant execution to avoid contract mismatches (Cursor Rule 1)
+      console.log('🛒 TRADING MODAL: Creating buy order (instant execution disabled for stability)')
+      await createBuyOrder()
       
     } catch (error) {
       console.error('❌ TRADING MODAL: executeMarketBuy error:', error)
@@ -449,7 +438,7 @@ export function TradingModal({
     try {
       setFlowState('executing')
       setError('')
-      setTransactionStep('approving') // Set step BEFORE calling writeContract
+      setTransactionStep('wallet_approval') // Show "Please sign wallet" first
 
       const ethers = await import('ethers')
       const sharesWei = ethers.parseUnits(shareAmount, 18)
@@ -462,6 +451,9 @@ export function TradingModal({
         functionName: 'approve',
         args: [property.orderbook_contract_address as `0x${string}`, sharesWei]
       })
+      
+      // Update to approval step after wallet interaction starts
+      setTransactionStep('approving')
 
     } catch (error) {
       console.error('❌ TRADING MODAL: Token approval error:', error)
@@ -1029,8 +1021,8 @@ export function TradingModal({
           )}
         </div>
 
-        {/* Trading Interface */}
-        {(flowState === 'input' || flowState === 'executing') && (
+        {/* Trading Interface - Only show when not processing on chain */}
+        {flowState === 'input' && !isProcessingOnChain && (
           <div className="space-y-3">
             {/* Tab Navigation */}
             <div className="space-y-6">
@@ -1052,7 +1044,7 @@ export function TradingModal({
                           <div className="flex items-center justify-between">
                             <div className="inline-flex items-center gap-1 bg-openhouse-bg-muted text-openhouse-fg pl-2 pr-4 py-2 rounded-full">
                               <Image src="/crypto/USDC.svg" alt="USDC" width={20} height={20} />
-                              <span className="font-medium">USDC</span>
+                              <span className="font-medium text-sm">USDC</span>
                             </div>
                             
                             <div className="flex flex-col items-end">
@@ -1162,10 +1154,12 @@ export function TradingModal({
                       (activeTab === 'sell' && !shareAmount) // fix: sell needs share amount (Cursor Rule 2)
                     }
                   >
-                    {isPending || isConfirming ? (
+                    {isPending || isConfirming || transactionStep !== 'idle' ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {transactionStep === 'approving' ? 'Approving...' : 'Processing...'}
+                        {transactionStep === 'wallet_approval' ? 'Please Sign Wallet...' : 
+                         transactionStep === 'approving' ? 'Approving...' : 
+                         'Processing...'}
                       </>
                     ) : (
                       <>
@@ -1198,26 +1192,34 @@ export function TradingModal({
               </div>
               <div className="mt-3">
                 <h3 className="text-lg font-medium text-gray-900">
-                  {activeTab === 'buy' ? 'Processing Buy Order' : 'Processing Sell Order'}
+                  {transactionStep === 'wallet_approval' && 'Please Sign Wallet'}
+                  {transactionStep === 'approving' && 'Please Approve'}
+                  {transactionStep === 'trading' && `Processing ${activeTab === 'buy' ? 'Buy' : 'Sell'} Order`}
                 </h3>
                 <div className="mt-2 space-y-2">
                   <p className="text-sm text-gray-500">
-                    Your transaction is being confirmed on the blockchain...
+                    {transactionStep === 'wallet_approval' && 'Open your wallet and confirm the transaction to continue'}
+                    {transactionStep === 'approving' && `Approving ${activeTab === 'buy' ? 'USDC' : 'token'} spending permission...`}
+                    {transactionStep === 'trading' && 'Your transaction is being confirmed on the blockchain...'}
                   </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-                    <div className="flex items-start gap-2">
-                      <Clock className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-blue-800">Transaction Successful</p>
-                        <p className="text-xs text-blue-700 mt-1">
-                          Usually takes up to 5 minutes to receive {activeTab === 'buy' ? 'tokens' : 'USDC'}
-                        </p>
-                        <p className="text-xs text-blue-600 mt-1">
-                          Transaction Hash: <code className="text-xs bg-blue-100 px-1 rounded">{hash?.slice(0, 8)}...{hash?.slice(-6)}</code>
-                        </p>
+                  
+                  {/* Show transaction progress info when we have a hash */}
+                  {hash && transactionStep === 'trading' && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
+                      <div className="flex items-start gap-2">
+                        <Loader2 className="h-4 w-4 text-gray-500 mt-0.5 flex-shrink-0 animate-spin" />
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-gray-700">Transaction Submitted</p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Processing your {activeTab} order on the blockchain...
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Hash: <code className="text-xs bg-gray-100 px-1 rounded">{hash?.slice(0, 8)}...{hash?.slice(-6)}</code>
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
