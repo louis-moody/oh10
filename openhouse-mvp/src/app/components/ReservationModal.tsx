@@ -463,34 +463,80 @@ export function ReservationModal({
           {/* Input Section - Only show if no existing reservation */}
           {!existingReservation && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="usdc-amount">USDC Amount</Label>
-                  <Input
-                    id="usdc-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={usdcAmount}
-                    onChange={(e) => handleInputChange(e.target.value, 'usdc')}
-                    className="mt-1"
-                    min="0"
-                    step="0.01"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  />
+              {/* Input Type Toggle */}
+              <div className="flex items-center gap-2 text-sm">
+                <button
+                  onClick={() => setInputType('usdc')}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    inputType === 'usdc' 
+                      ? 'bg-openhouse-accent text-openhouse-accent-fg' 
+                      : 'text-openhouse-fg-muted hover:text-openhouse-fg'
+                  }`}
+                  disabled={flowState !== 'input' && flowState !== 'error'}
+                >
+                  USDC
+                </button>
+                <button
+                  onClick={() => setInputType('shares')}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    inputType === 'shares' 
+                      ? 'bg-openhouse-accent text-openhouse-accent-fg' 
+                      : 'text-openhouse-fg-muted hover:text-openhouse-fg'
+                  }`}
+                  disabled={flowState !== 'input' && flowState !== 'error'}
+                >
+                  Shares
+                </button>
+              </div>
+
+              {/* Trading-style input container */}
+              <div className="border border-openhouse-border rounded-md p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-openhouse-fg">
+                    {inputType === 'usdc' ? 'Deposit amount' : 'Number of shares'}
+                  </span>
+                  <span className="text-sm text-openhouse-fg-muted">
+                    Balance: {formatUsdcBalance(userUsdcBalance)}
+                  </span>
                 </div>
-                <div>
-                  <Label htmlFor="share-amount">Number of Shares</Label>
-                  <Input
-                    id="share-amount"
-                    type="number"
-                    placeholder="0"
-                    value={shareAmount}
-                    onChange={(e) => handleInputChange(e.target.value, 'shares')}
-                    className="mt-1"
-                    min="0"
-                    step="1"
-                    disabled={flowState !== 'input' && flowState !== 'error'}
-                  />
+                
+                <div className="flex items-center justify-between">
+                  <div className="inline-flex items-center gap-1 bg-openhouse-bg-muted text-openhouse-fg pl-2 pr-4 py-2 rounded-full">
+                    {inputType === 'usdc' ? (
+                      <>
+                        <DollarSign className="w-4 h-4" />
+                        <span className="font-medium text-sm">USDC</span>
+                      </>
+                    ) : (
+                      <>
+                        <Calculator className="w-4 h-4" />
+                        <span className="font-medium text-sm">Shares</span>
+                      </>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col items-end">
+                    <Input
+                      type="number"
+                      value={inputType === 'usdc' ? usdcAmount : shareAmount}
+                      onChange={(e) => handleInputChange(e.target.value, inputType)}
+                      placeholder="0"
+                      className="text-right text-3xl font-medium rounded-none border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      min="0"
+                      step={inputType === 'usdc' ? "0.01" : "1"}
+                      disabled={flowState !== 'input' && flowState !== 'error'}
+                    />
+                    {inputType === 'usdc' && calculatedShares > 0 && (
+                      <span className="text-sm text-openhouse-fg-muted mt-1">
+                        {calculatedShares} shares
+                      </span>
+                    )}
+                    {inputType === 'shares' && calculatedUsdc > 0 && (
+                      <span className="text-sm text-openhouse-fg-muted mt-1">
+                        {formatCurrency(calculatedUsdc)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
