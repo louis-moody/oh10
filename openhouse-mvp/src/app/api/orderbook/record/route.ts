@@ -419,24 +419,45 @@ async function attemptOrderMatching(
 
   console.log(`🔍 MATCHING: Found ${matchingOrders.length} potential matches`)
 
-  // For now, just log potential matches - actual execution would need contract integration
+  // fix: execute matches immediately - check if orders can be filled (Cursor Rule 4)
   for (const match of matchingOrders) {
     const priceMatch = Math.abs(match.price_per_share - pricePerShare) < 0.01 // 1 cent tolerance
-    const sharesAvailable = match.shares_remaining >= shares * 0.999 // 99.9% fill tolerance
     
-    console.log(`🔍 MATCHING: Order ${match.id} - Price match: ${priceMatch}, Shares available: ${sharesAvailable}`, {
+    // fix: determine fillable amount - take minimum of what each order can provide/accept (Cursor Rule 4)
+    const fillableShares = Math.min(match.shares_remaining, shares)
+    const canFill = fillableShares > 0.001 // Must be able to fill at least 0.001 shares
+    
+    console.log(`🔍 MATCHING: Order ${match.id} - Price match: ${priceMatch}, Can fill: ${canFill}`, {
       matchPrice: match.price_per_share,
       targetPrice: pricePerShare,
       matchShares: match.shares_remaining,
-      targetShares: shares
+      targetShares: shares,
+      fillableShares
     })
     
-    if (priceMatch && sharesAvailable) {
-      console.log(`✅ MATCHING: Found exact match - Order ${match.id} can fulfill ${shares} shares at ${pricePerShare}`)
+    if (priceMatch && canFill) {
+      console.log(`✅ MATCHING: Found fillable match - Order ${match.id} can fill ${fillableShares} shares at ${pricePerShare}`)
       
       // fix: execute the order immediately using smart contract (Cursor Rule 4)
       try {
-        await executeOrderMatch(propertyId, match, contractOrderId, shares, pricePerShare, orderType)
+        await executeOrderMatch(propertyId, match, contractOrderId, fillableShares, pricePerShare, orderType)
+        
+        // fix: if this was a partial fill, update the new order's remaining shares (Cursor Rule 4)
+        if (fillableShares < shares) {
+          await supabaseAdmin
+            .from('order_book')
+            .update({ 
+              shares_remaining: shares - fillableShares,
+              updated_at: new Date().toISOString()
+            })
+            .eq('contract_order_id', contractOrderId)
+            .eq('property_id', propertyId)
+        }
+        
+        // Continue to next match if there are still shares to fill
+        shares -= fillableShares
+        if (shares <= 0.001) break // Stop if order is fully filled
+        
       } catch (executeError) {
         console.error('❌ MATCHING: Failed to execute order match:', executeError)
         // Continue to next match if this one fails

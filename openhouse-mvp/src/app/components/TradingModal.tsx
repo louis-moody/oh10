@@ -211,9 +211,23 @@ export function TradingModal({
         contractAddress: property.orderbook_contract_address
       })
 
-      // fix: ALWAYS CREATE BUY ORDER - skip instant execution to avoid contract mismatches (Cursor Rule 1)
-      console.log('🛒 TRADING MODAL: Creating buy order (instant execution disabled for stability)')
-      await createBuyOrder()
+      // fix: fetch current market data to find executable sell orders (Cursor Rule 2)
+      const marketData = await fetch(`/api/orderbook/market-data?property_id=${property.id}`)
+      const marketDataJson = await marketData.json()
+      
+      console.log('🛒 TRADING MODAL: Market data:', {
+        availableShares: marketDataJson.available_shares,
+        sellOrdersCount: marketDataJson.sell_orders?.length || 0,
+        sellOrders: marketDataJson.sell_orders
+      })
+
+      if (marketDataJson.available_shares > 0 && marketDataJson.sell_orders?.length > 0) {
+        console.log('✅ TRADING MODAL: Found sell orders - executing against orderbook')
+        await executeInstantBuy(marketDataJson.sell_orders)
+      } else {
+        console.log('🛒 TRADING MODAL: No sell orders available - creating buy order')
+        await createBuyOrder()
+      }
       
     } catch (error) {
       console.error('❌ TRADING MODAL: executeMarketBuy error:', error)
@@ -700,12 +714,17 @@ export function TradingModal({
   // fix: VERIFY ORDER CREATION ON SMART CONTRACT BEFORE RECORDING (Cursor Rule 4)
   const verifyOrderCreationAndRecord = async (transactionHash: string) => {
     try {
-      console.log('🔍 TRADING MODAL: Transaction confirmed, recording order...')
+      console.log('🔍 TRADING MODAL: Transaction confirmed, recording order with hash:', transactionHash)
       
-      // fix: if transaction was confirmed by wallet, assume success (Cursor Rule 4)
-      // The smart contract verification was failing because debug endpoint expects orders
-      // but this might be the first order, so wallet confirmation is sufficient proof
-      console.log('✅ TRADING MODAL: Transaction confirmed by wallet, recording...')
+      // fix: ensure transaction hash is valid before recording (Cursor Rule 4)
+      if (!transactionHash) {
+        console.error('❌ TRADING MODAL: No transaction hash provided')
+        setError('Transaction hash missing')
+        setFlowState('error')
+        return
+      }
+      
+      console.log('✅ TRADING MODAL: Recording order with confirmed transaction hash...')
       await recordTradeActivity(transactionHash)
       setFlowState('success')
       
@@ -788,6 +807,8 @@ export function TradingModal({
           contract_address: property.orderbook_contract_address
         }
 
+        console.log('📤 TRADING MODAL: Sending order data to record API:', orderData)
+        
         const response = await fetch('/api/orderbook/record', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -796,9 +817,12 @@ export function TradingModal({
         })
 
         if (response.ok) {
-          console.log('✅ TRADING MODAL: New order recorded successfully')
+          const result = await response.json()
+          console.log('✅ TRADING MODAL: New order recorded successfully:', result)
         } else {
-          console.error('❌ TRADING MODAL: Failed to record new order')
+          const errorText = await response.text()
+          console.error('❌ TRADING MODAL: Failed to record new order. Status:', response.status, 'Error:', errorText)
+          throw new Error(`Recording failed: ${response.status} - ${errorText}`)
         }
       }
     } catch (error) {

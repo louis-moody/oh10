@@ -803,12 +803,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             {/* Basic Property Details (Non-Live Properties) */}
             {!isPropertyLive(property.status) && (
               <Card className="p-0 mt-0">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-openhouse-accent" />
-                    Investment Details
-                  </CardTitle>
-                </CardHeader>
                 <CardContent className="p-0">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -821,27 +815,35 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     </div>
                   </div>
                   
-                  <div>
-                    <div className="flex justify-between py-4 border-b border-openhouse-border text-sm items-center mb-2">
-                      <span className="text-sm text-openhouse-fg-muted">Funding Progress</span>
-                      <span className="text-sm font-medium text-openhouse-fg">
-                        {formatCurrency(fundingProgress.raised_amount)} / {formatCurrency(property.funding_goal_usdc)}
-                      </span>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-openhouse-fg-muted mb-3">Funding Progress</h3>
+                      <div className="flex justify-between items-baseline mb-2">
+                        <div>
+                          <p className="text-xs text-openhouse-fg-muted">Current funding</p>
+                          <p className="text-lg font-semibold text-openhouse-fg">{formatCurrency(fundingProgress.raised_amount)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-openhouse-fg-muted">Goal</p>
+                          <p className="text-lg font-semibold text-openhouse-fg">{formatCurrency(property.funding_goal_usdc)}</p>
+                        </div>
+                      </div>
+                      <div className="w-full bg-openhouse-bg-muted rounded-full h-2 mb-2">
+                        <div 
+                          className="bg-openhouse-accent h-2 rounded-full transition-all duration-300" 
+                          style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs text-openhouse-fg-muted">
+                          {fundingProgress.progress_percentage.toFixed(1)}% funded
+                        </p>
+                        <div className="flex items-center gap-1 text-xs text-openhouse-fg-muted">
+                          <Clock className="w-3 h-3" />
+                          <span>Deadline: {formatDeadline(property.funding_deadline)}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-full bg-openhouse-bg-muted rounded-full h-2">
-                      <div 
-                        className="bg-openhouse-accent h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${Math.min(fundingProgress.progress_percentage, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-openhouse-fg-muted mt-1">
-                      {fundingProgress.progress_percentage.toFixed(1)}% funded
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
-                    <Clock className="w-4 h-4" />
-                    <span>Deadline: {formatDeadline(property.funding_deadline)}</span>
                   </div>
 
                   {canReserve() ? (

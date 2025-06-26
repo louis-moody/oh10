@@ -129,6 +129,12 @@ export function Header() {
           <div className="flex items-center gap-8">
             <Link href="/"><Image src="/images/Logo-Full.svg" alt="OpenHouse" width={150} height={100} /></Link>
           </div>
+
+          <div className="flex items-center gap-4">
+            <Link href="/wallet">
+              Wallet
+            </Link>
+          </div>
           
           <div className="flex items-center gap-4">
             <ConnectButton onAuthSuccess={handleAuthSuccess} />
