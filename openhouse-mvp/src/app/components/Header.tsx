@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { usePathname } from 'next/navigation'
 import { ConnectButton } from './ConnectButton'
 import { ProfileCompleteModal } from './ProfileCompleteModal'
 
@@ -19,6 +20,10 @@ export function Header() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const pathname = usePathname()
+  
+  // fix: check if current page is a property page (Cursor Rule 7)
+  const isPropertyPage = pathname?.startsWith('/properties/')
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -119,7 +124,7 @@ export function Header() {
 
   return (
     <>
-      <header className="bg-openhouse-bg/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className={`bg-openhouse-bg/80 backdrop-blur-sm sticky top-0 z-50 ${isPropertyPage ? 'border-b border-openhouse-border' : ''}`}>
         <div className="container mx-auto px-0 py-2 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <Link href="/"><Image src="/images/Logo-Full.svg" alt="OpenHouse" width={150} height={100} /></Link>

@@ -4,12 +4,12 @@ import React, { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
-import { ArrowRightLeft, TrendingUp, TrendingDown, AlertCircle, CheckCircle, DollarSign, ExternalLink, Clock } from 'lucide-react'
+import { Card, CardContent} from './ui/card'
+import {TrendingUp, TrendingDown, AlertCircle, CheckCircle, Clock, Building2, ChevronDown } from 'lucide-react'
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Loader2 } from 'lucide-react'
 import { OrderBookExchangeABI, getUsdcAddress as getUsdcAddressByChain } from '@/lib/contracts'
+import Image from 'next/image'
 
 interface TradingModalProps {
   isOpen: boolean
@@ -36,6 +36,7 @@ export function TradingModal({
   onTradeSuccess
 }: TradingModalProps) {
   const [activeTab, setActiveTab] = useState<TradeTab>('buy')
+  const [showDropdown, setShowDropdown] = useState(false)
   const [usdcAmount, setUsdcAmount] = useState('')
   const [shareAmount, setShareAmount] = useState('')
   const [flowState, setFlowState] = useState<FlowState>('input')
@@ -980,162 +981,141 @@ export function TradingModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-md md:max-w-md max-h-[80vh] gap-0 overflow-y-auto p-5 m-0">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ArrowRightLeft className="h-5 w-5" />
-            Trade {property.name}
-          </DialogTitle>
+          <DialogTitle className="sr-only">Buy Now - {property.name}</DialogTitle>
         </DialogHeader>
-
-        {/* Trade Type Tabs */}
-        <div className="flex space-x-1 rounded-lg bg-gray-100 p-1">
+        {/* Trade Type Dropdown */}
+        <div className="relative">
           <button
             type="button"
-            onClick={(e) => {
-              e.preventDefault() // fix: prevent any default form submission behavior
-              setActiveTab('buy')
-              // fix: clear transaction state when switching tabs to prevent confusion (Cursor Rule 7)
-              setTransactionStep('idle')
-              setRecordedHashes(new Set())
-              setError('')
-            }}
-            className={`flex-1 rounded-md py-2 px-3 text-sm font-medium transition-colors ${
-              activeTab === 'buy'
-                ? 'bg-white text-green-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            onClick={() => setShowDropdown(!showDropdown)}
+            className="flex items-center justify-start gap-1 w-full text-xl font-medium text-openhouse-fg bg-white"
           >
-            <TrendingUp className="h-4 w-4 inline mr-1" />
-            Buy Tokens
+            <span>{activeTab === 'buy' ? 'Buy Now' : 'Sell Your Shares'}</span>
+            <ChevronDown className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault() // fix: prevent any default form submission behavior
-              setActiveTab('sell')
-              // fix: clear transaction state when switching tabs to prevent confusion (Cursor Rule 7)
-              setTransactionStep('idle')
-              setRecordedHashes(new Set())
-              setError('')
-            }}
-            className={`flex-1 rounded-md py-2 px-3 text-sm font-medium transition-colors ${
-              activeTab === 'sell'
-                ? 'bg-white text-red-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            disabled={userTokenBalance <= BigInt(0)}
-          >
-            <TrendingDown className="h-4 w-4 inline mr-1" />
-            Sell Tokens
-          </button>
+          
+          {showDropdown && (
+            <div className="absolute top-full p-2 space-y-1 rounded-md border border-openhouse-border shadow-md left-0 right-0 mt-1 bg-white z-10">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('buy')
+                  setShowDropdown(false)
+                  setTransactionStep('idle')
+                  setRecordedHashes(new Set())
+                  setError('')
+                }}
+                className="w-full py-2 text-left text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
+              >
+                Buy Now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('sell')
+                  setShowDropdown(false)
+                  setTransactionStep('idle')
+                  setRecordedHashes(new Set())
+                  setError('')
+                }}
+                className="w-full py-2 text-left text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
+                disabled={userTokenBalance <= BigInt(0)}
+              >
+                Sell Your Shares
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Trading Interface */}
         {(flowState === 'input' || flowState === 'executing') && (
-          <div className="space-y-6">
-            {/* fix: SIMPLIFIED MARKET STATUS - retail friendly (Cursor Rule 14) */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-medium text-gray-900">Market Status</h4>
-                <Badge variant="outline" className="text-xs">Live</Badge>
-              </div>
-              
-              {availableShares > 0 ? (
-                <div className="bg-green-50 border border-green-200 rounded p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-green-600">⚡</span>
-                    <span className="font-semibold text-green-800">{availableShares} tokens available</span>
-                  </div>
-                  <p className="text-xs text-green-700">
-                    Ready for instant purchase at ${property.price_per_token}/token
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-blue-600">⏳</span>
-                    <span className="font-semibold text-blue-800">No tokens available</span>
-                  </div>
-                  <p className="text-xs text-blue-700">
-                    {activeTab === 'buy' 
-                      ? 'Waiting for token holders to list shares for sale' 
-                      : 'Be the first to list tokens for sale'
-                    }
-                  </p>
-                </div>
-              )}
-            </div>
-
+          <div className="space-y-3">
             {/* Tab Navigation */}
             <div className="space-y-6">
-              {/* Balance Information - Compact */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Your Balances</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">USDC</p>
-                    <p className="text-lg font-semibold">${formatUsdcBalance()}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">{property.name} tokens</p>
-                    <p className="text-lg font-semibold">{formatTokenBalance()}</p>
-                  </div>
-                </div>
-              </div>
 
               {/* Trade Input - Single Card */}
-              <Card>
-                <CardContent className="space-y-4 pt-6">
+              <Card className='mt-4 pt-0 pb-0'>
+                <CardContent className="space-y-2 pt-2">
                   {activeTab === 'buy' && (
                     <div>
-                      <label className="text-sm font-medium text-gray-700">USDC Amount</label>
-                      <Input
-                        type="number"
-                        value={usdcAmount}
-                        onChange={(e) => setUsdcAmount(e.target.value)}
-                        placeholder="Enter USDC amount"
-                        className="mt-1"
-                        min="0"
-                        step="0.01"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Estimated shares: {calculateShares().toFixed(2)}
-                      </p>
+                      <p className="text-sm text-openhouse-fg-muted">Once the transaction is confirmed, the NFT will be sent to your wallet instantly.</p>
+                      <div className="pt-6">
+                        {/* SummerFi-style input container */}
+                        <div className="border border-openhouse-border rounded-md p-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-openhouse-fg">Deposit token</span>
+                            <span className="text-sm text-gray-600">Balance: {formatUsdcBalance()} USDC</span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="inline-flex items-center gap-1 bg-openhouse-bg-muted text-openhouse-fg pl-2 pr-4 py-2 rounded-full">
+                              <Image src="/crypto/USDC.svg" alt="USDC" width={20} height={20} />
+                              <span className="font-medium">USDC</span>
+                            </div>
+                            
+                            <div className="flex flex-col items-end">
+                              <Input
+                                type="number"
+                                value={usdcAmount}
+                                onChange={(e) => setUsdcAmount(e.target.value)}
+                                placeholder="0"
+                                className="text-right text-5xl md:text-3xl font-medium rounded-none border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                min="0"
+                                step="0.01"
+                                autoFocus={activeTab === 'buy'}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {activeTab === 'sell' && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Number of tokens</label>
-                      <Input
-                        type="number"
-                        value={shareAmount}
-                        onChange={(e) => setShareAmount(e.target.value)}
-                        placeholder="Enter number of tokens"
-                        className="mt-1"
-                        min="0"
-                        step="0.01"
-                      />
+                    <div className="space-y-4">
+                      {/* SummerFi-style input container */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-600">Deposit token</span>
+                          <span className="text-sm text-gray-600">Balance: {formatTokenBalance()} tokens</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 bg-gray-800 text-white px-3 py-2 rounded-lg">
+                              <Building2 className="w-5 h-5" />
+                              <span className="font-medium">{property.name}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col items-end">
+                            <Input
+                              type="number"
+                              value={shareAmount}
+                              onChange={(e) => setShareAmount(e.target.value)}
+                              placeholder="0"
+                              className="text-right text-2xl font-medium border-none bg-transparent p-0 h-auto focus:ring-0 focus:border-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              min="0"
+                              step="0.01"
+                              autoFocus={activeTab === 'sell'}
+                            />
+                            <span className="text-sm text-gray-500 mt-1">
+                              ${formatCurrency(calculateProceeds())}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
-                  {/* Price display - simplified */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-blue-800">Price:</span>
-                      <span className="text-lg font-semibold text-blue-900">
-                        {formatCurrency(property.price_per_token)}
-                      </span>
-                    </div>
-                  </div>
-
                   {/* Buy summary - simplified */}
                   {activeTab === 'buy' && usdcAmount && parseFloat(usdcAmount) > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="bg-openhouse-bg-muted rounded-md p-3">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-green-800">You get:</span>
-                        <span className="text-lg font-semibold text-green-900">
+                        <span className="text-sm font-medium text-openhouse-fg-muted">You get:</span>
+                        <span className="text-sm font-medium text-openhouse-fg">
                           {calculateShares().toFixed(2)} tokens
                         </span>
                       </div>
@@ -1143,10 +1123,10 @@ export function TradingModal({
                   )}
 
                   {activeTab === 'sell' && shareAmount && parseFloat(shareAmount) > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="bg rounded-md p-3">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-red-800">You get:</span>
-                        <span className="text-lg font-semibold text-red-900">
+                        <span className="text-sm font-medium text-openhouse-fg-muted">You get:</span>
+                        <span className="text-sm font-medium text-openhouse-fg">
                           {formatCurrency(calculateProceeds())}
                         </span>
                       </div>
