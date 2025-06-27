@@ -101,25 +101,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         return
       }
 
-      // fix: debug raw database response (Cursor Rule 6)
-      console.log('🔍 Raw property data from DB:', propertyData)
-      console.log('🔍 All property keys:', Object.keys(propertyData))
-      console.log('🔍 video_thumbnail specifically:', {
-        value: propertyData.video_thumbnail,
-        type: typeof propertyData.video_thumbnail,
-        exists: 'video_thumbnail' in propertyData
-      })
-
       setProperty(propertyData)
-      
-      // fix: debug video_thumbnail field (Cursor Rule 6)
-      console.log('🎬 Property data loaded:', {
-        id: propertyData.id,
-        name: propertyData.name,
-        has_image: !!propertyData.image_url,
-        has_video: !!propertyData.video_thumbnail,
-        video_url: propertyData.video_thumbnail
-      })
 
       // fix: parallel data fetching for performance (Cursor Rule 4)
       await Promise.all([
@@ -764,14 +746,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <CardContent className="p-10">
                 <div className="relative overflow-hidden rounded-sm h-[900px]">
                   {/* fix: use dynamic video_thumbnail from Supabase for property showcase (Cursor Rule 4) */}
-                  {(() => {
-                    console.log('🎬 Rendering decision:', { 
-                      hasVideo: !!property.video_thumbnail, 
-                      videoUrl: property.video_thumbnail,
-                      hasImage: !!property.image_url 
-                    })
-                    return null
-                  })()}
                   {property.video_thumbnail ? (
                     <video
                       className="absolute inset-0 w-full h-full object-cover rounded-sm"
@@ -919,7 +893,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     </div>*/}
                     
                     <div className="flex items-center gap-8">
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="flex flex-col items-start gap-1">
                         <h3 className="text-sm text-openhouse-fg-muted">Current Funding:</h3>
                         <p className="text-2xl font-semibold text-openhouse-fg">
                           {/*{fundingProgress.progress_percentage.toFixed(0)}% */}

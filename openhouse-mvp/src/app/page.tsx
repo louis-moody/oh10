@@ -6,7 +6,6 @@ import { PropertyCard } from './components/PropertyCard'
 import { EmptyState } from './components/EmptyState'
 import { LoadingState } from './components/LoadingState'
 import { Hero } from './components/Hero'
-import { AlertCircle } from 'lucide-react'
 
 export default function HomePage() {
   const [properties, setProperties] = useState<PropertyWithProgress[]>([])
@@ -44,12 +43,7 @@ export default function HomePage() {
         return
       }
 
-      // fix: debug properties data from homepage (Cursor Rule 6)
-      console.log('🏠 Homepage properties raw data:', propertiesData)
-      if (propertiesData.length > 0) {
-        console.log('🏠 First property keys:', Object.keys(propertiesData[0]))
-        console.log('🏠 First property video_thumbnail:', propertiesData[0].video_thumbnail)
-      }
+
 
       // fix: show properties with zero progress until payment_authorizations table is properly configured (Cursor Rule 4)
       const propertiesWithProgress: PropertyWithProgress[] = propertiesData.map((property: Property) => ({
@@ -101,21 +95,65 @@ export default function HomePage() {
     )
   }
 
+  // fix: organize properties by status (Cursor Rule 4)
+  const organizeProperties = () => {
+    const organized = {
+      funding: properties.filter(p => p.status === 'active'),
+      trading: properties.filter(p => p.status === 'live' || p.status === 'completed'),
+      funded: properties.filter(p => p.status === 'funded')
+    }
+
+    return organized
+  }
+
+  const organizedProperties = organizeProperties()
+
+  const renderPropertySection = (title: string, properties: PropertyWithProgress[], description?: string) => {
+    if (properties.length === 0) return null
+
+    return (
+      <div className="mb-3">
+        <div className="mb-3">
+          <h2 className=" text-xl font-medium text-openhouse-fg mb-2">
+            {title}
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 xl:grid-cols-5 gap-6">
+          {properties
+            .sort((a, b) => b.raised_amount - a.raised_amount) // Sort by highest funding first
+            .slice(0, 5)
+            .map((property) => (
+              <PropertyCard key={property.id} property={property} />
+            ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
-      {/* Hero Section 
-      <Hero />*/}
-
       {/* Properties Section */}
-      <div className="container mx-auto px-4 py-16">
+      <div className="container mx-auto px-0 py-0">
         {properties.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
-            {properties.map((property) => (
-              <PropertyCard key={property.id} property={property} />
-            ))}
-          </div>
+                    <>
+            {/* Property Sections */}
+            {renderPropertySection(
+              '',
+              organizedProperties.funding,
+            )}
+
+            {renderPropertySection(
+              'Available',
+              organizedProperties.trading,
+            )}
+
+            {renderPropertySection(
+              'Fully Funded',
+              organizedProperties.funded,
+            )}
+          </>
         )}
       </div>
     </>

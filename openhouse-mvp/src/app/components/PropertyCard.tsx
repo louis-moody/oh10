@@ -34,18 +34,16 @@ export function PropertyCard({ property }: PropertyCardProps) {
     status,
     raised_amount,
     funding_goal_usdc,
-    progress_percentage
+    progress_percentage,
+    total_shares
   } = property
 
-  // fix: debug video_thumbnail in PropertyCard (Cursor Rule 6)
-  console.log(`🎬 PropertyCard ${name}:`, {
-    has_image: !!image_url,
-    has_video: !!video_thumbnail,
-    video_url: video_thumbnail
-  })
+
 
   const [completedStats, setCompletedStats] = useState<CompletedPropertyStats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
+  const [propertyFinancials, setPropertyFinancials] = useState<any>(null)
+  const [availableShares, setAvailableShares] = useState<number | null>(null)
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
 
@@ -177,12 +175,57 @@ export function PropertyCard({ property }: PropertyCardProps) {
     }
   }, [id, status, address, isConnected, price_per_token, chainId])
 
+  // fix: fetch property financials for all properties (Cursor Rule 4)
+  const fetchPropertyFinancials = useCallback(async () => {
+    if (!supabase) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('property_financials')
+        .select('annual_yield_pct')
+        .eq('property_id', id)
+        .single()
+
+      if (!error && data) {
+        setPropertyFinancials(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch property financials:', error)
+    }
+  }, [id])
+
+  // fix: fetch available shares for live properties (Cursor Rule 4)
+  const fetchAvailableShares = useCallback(async () => {
+    if (!supabase) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('property_token_details')
+        .select('available_shares')
+        .eq('property_id', id)
+        .single()
+
+      if (!error && data && data.available_shares !== null) {
+        setAvailableShares(data.available_shares)
+      } else {
+        // Fallback to total_shares if no token details yet
+        setAvailableShares(total_shares)
+      }
+    } catch (error) {
+      console.error('Failed to fetch available shares:', error)
+      setAvailableShares(total_shares)
+    }
+  }, [id, total_shares])
+
   // fix: fetch completed property stats from database and contracts (Cursor Rule 4)
   useEffect(() => {
+    fetchPropertyFinancials()
+    fetchAvailableShares()
+    
     if (status === 'completed' || status === 'live') {
       fetchCompletedPropertyStats()
     }
-  }, [status, fetchCompletedPropertyStats])
+  }, [status, fetchCompletedPropertyStats, fetchPropertyFinancials, fetchAvailableShares])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -206,9 +249,25 @@ export function PropertyCard({ property }: PropertyCardProps) {
     if (isLoadingStats || !completedStats) {
       return (
         <CardContent className="pt-0 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-openhouse-fg-muted">Loading stats...</p>
+          {/* Three-column data layout */}
+          <div className="grid grid-cols-3 gap-4 items-center justify-center p-3 bg-openhouse-bg-muted rounded-md">
+            <div className="text-center">
+              <p className="text-sm text-openhouse-fg-muted">Available</p>
+              <p className="font-semibold text-openhouse-fg">
+                {availableShares !== null ? availableShares : total_shares}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-openhouse-fg-muted">Price</p>
+              <p className="font-semibold text-openhouse-fg">
+                {formatCurrency(price_per_token)}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+              <p className="font-semibold text-openhouse-fg">
+                {propertyFinancials?.annual_yield_pct ? `${propertyFinancials.annual_yield_pct.toFixed(1)}%` : 'TBD'}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -217,26 +276,36 @@ export function PropertyCard({ property }: PropertyCardProps) {
 
     return (
       <CardContent className="pt-0 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-openhouse-fg-muted">Price per Token</p>
-            <p className="font-medium text-openhouse-fg">
+        {/* Three-column data layout */}
+        <div className="grid grid-cols-3 gap-4 items-start justify-start">
+          <div className="text-left">
+            <p className="text-sm text-openhouse-fg-muted">Available</p>
+            <p className="font-semibold text-openhouse-fg">
+              {availableShares !== null ? availableShares : total_shares}
+            </p>
+          </div>
+          <div className="text-left">
+            <p className="text-sm text-openhouse-fg-muted">Price</p>
+            <p className="font-semibold text-openhouse-fg">
               {formatCurrency(completedStats.pricePerToken)}
               {completedStats.lastTradePrice && completedStats.lastTradePrice !== price_per_token && (
-                <span className="text-xs text-openhouse-fg-muted ml-1">
+                <span className="text-xs text-openhouse-fg-muted block">
                   (Last traded)
                 </span>
               )}
             </p>
           </div>
-          {completedStats.estimatedAPY !== null && (
-            <div className="text-right">
-              <p className="text-sm text-openhouse-fg-muted">Est. APY</p>
-              <p className="font-medium text-openhouse-success">
-                {completedStats.estimatedAPY.toFixed(1)}%
-              </p>
-            </div>
-          )}
+          <div className="text-left">
+            <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+            <p className="font-semibold text-openhouse-fg">
+              {completedStats.estimatedAPY !== null 
+                ? `${completedStats.estimatedAPY.toFixed(1)}%` 
+                : propertyFinancials?.annual_yield_pct 
+                  ? `${propertyFinancials.annual_yield_pct.toFixed(1)}%` 
+                  : 'TBD'
+              }
+            </p>
+          </div>
         </div>
       </CardContent>
     )
@@ -245,25 +314,37 @@ export function PropertyCard({ property }: PropertyCardProps) {
   // fix: render crowdfunding stats for non-completed properties (Cursor Rule 4)
   const renderCrowdfundingStats = () => (
     <CardContent className="pt-0 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-openhouse-fg-muted">Price per token</p>
-          <p className="font-medium text-openhouse-fg">
+      {/* Three-column data layout */}
+      <div className="grid grid-cols-3 gap-4 items-start justify-start">
+        <div className="text-left">
+          <p className="text-sm text-openhouse-fg-muted">Available</p>
+          <p className="font-semibold text-openhouse-fg">
+            {availableShares !== null ? availableShares : total_shares}
+          </p>
+        </div>
+        <div className="text-left">
+          <p className="text-sm text-openhouse-fg-muted">Price</p>
+          <p className="font-semibold text-openhouse-fg">
             {formatCurrency(price_per_token)}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-openhouse-fg-muted">Progress</p>
-          <p className="font-medium text-openhouse-fg">
-            {progress_percentage}%
+        <div className="text-left">
+          <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+          <p className="font-semibold text-openhouse-fg">
+            {propertyFinancials?.annual_yield_pct ? `${propertyFinancials.annual_yield_pct.toFixed(1)}%` : 'TBD'}
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
         <div className="flex justify-between text-sm text-openhouse-fg-muted">
-          <span>Raised</span>
-          <span>{formatCurrency(raised_amount)} of {formatCurrency(funding_goal_usdc)}</span>
+          <div className="text-sm text-openhouse-fg-muted">
+            <span className="font-semibold text-openhouse-fg">{formatCurrency(raised_amount)}</span> <span className="text-openhouse-fg-muted">of {formatCurrency(funding_goal_usdc)}</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
+            <span>Ends {formatDeadline(funding_deadline)}</span>
+          </div>
         </div>
         <div className="w-full bg-openhouse-bg-muted rounded-full h-2">
           <div 
@@ -271,11 +352,6 @@ export function PropertyCard({ property }: PropertyCardProps) {
             style={{ width: `${Math.min(progress_percentage, 100)}%` }}
           />
         </div>
-      </div>
-
-      <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
-        <Calendar className="w-4 h-4" />
-        <span>Ends {formatDeadline(funding_deadline)}</span>
       </div>
     </CardContent>
   )

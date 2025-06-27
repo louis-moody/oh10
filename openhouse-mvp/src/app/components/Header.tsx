@@ -124,12 +124,18 @@ export function Header() {
 
   return (
     <>
-      <header className={`bg-openhouse-bg/80 backdrop-blur-sm fixed w-full top-0 z-50 ${isPropertyPage ? 'border-b border-openhouse-border' : ''}`}>
+      <header className={`bg-openhouse-bg/80 backdrop-blur-sm sticky w-full top-0 z-50 ${isPropertyPage ? 'border-b border-openhouse-border' : ''}`}>
         <div className="container mx-auto px-0 py-2 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <Link href="/"><Image src="/images/Logo-Full.svg" alt="OpenHouse" width={150} height={100} /></Link>
-            <Link href="/wallet">
+            <Link href="/wallet" className="text-openhouse-fg-muted font-semibold hover:text-openhouse-fg transition-colors">
+              Marketplace
+            </Link>
+            <Link href="/wallet" className="text-openhouse-fg-muted font-semibold hover:text-openhouse-fg transition-colors">
               Wallet
+            </Link>
+            <Link href="/wallet" className="text-openhouse-fg-muted font-semibold hover:text-openhouse-fg transition-colors">
+              Learn
             </Link>
           </div>
           

@@ -35,7 +35,7 @@ export default function RootLayout({
         <Providers>
           <div className="min-h-screen bg-openhouse-bg flex flex-col">
             <Header />
-            <main className="flex-1 pt-16">
+            <main className="flex-1">
               {children}
             </main>
             <footer className="border-t border-openhouse-border bg-openhouse-bg">
