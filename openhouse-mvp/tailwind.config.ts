@@ -13,6 +13,7 @@ const config: Config = {
         sans: ['var(--font-inter)'],
         mono: ['var(--font-mono)'],
         heading: ['var(--font-inter)'],
+        title: ['NeueMontreal', 'sans-serif'],
       },
       fontSize: {
         // Add custom font sizes
@@ -67,6 +68,7 @@ const config: Config = {
         
         // OpenHouse custom tokens
         'openhouse-bg': 'var(--openhouse-bg)',
+        'openhouse-button-primary': 'var(--openhouse-button-primary)',
         'openhouse-button-secondary': 'var(--openhouse-button-secondary)',
         'openhouse-fg': 'var(--openhouse-fg)',
         'openhouse-bg-muted': 'var(--openhouse-bg-muted)',

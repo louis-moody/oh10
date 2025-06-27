@@ -101,7 +101,25 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         return
       }
 
+      // fix: debug raw database response (Cursor Rule 6)
+      console.log('🔍 Raw property data from DB:', propertyData)
+      console.log('🔍 All property keys:', Object.keys(propertyData))
+      console.log('🔍 video_thumbnail specifically:', {
+        value: propertyData.video_thumbnail,
+        type: typeof propertyData.video_thumbnail,
+        exists: 'video_thumbnail' in propertyData
+      })
+
       setProperty(propertyData)
+      
+      // fix: debug video_thumbnail field (Cursor Rule 6)
+      console.log('🎬 Property data loaded:', {
+        id: propertyData.id,
+        name: propertyData.name,
+        has_image: !!propertyData.image_url,
+        has_video: !!propertyData.video_thumbnail,
+        video_url: propertyData.video_thumbnail
+      })
 
       // fix: parallel data fetching for performance (Cursor Rule 4)
       await Promise.all([
@@ -741,11 +759,51 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content - Property Image Only */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Property Image */}
+            {/* Property Video */}
             <Card>
               <CardContent className="p-10">
                 <div className="relative overflow-hidden rounded-sm h-[900px]">
-                  {property.image_url ? (
+                  {/* fix: use dynamic video_thumbnail from Supabase for property showcase (Cursor Rule 4) */}
+                  {(() => {
+                    console.log('🎬 Rendering decision:', { 
+                      hasVideo: !!property.video_thumbnail, 
+                      videoUrl: property.video_thumbnail,
+                      hasImage: !!property.image_url 
+                    })
+                    return null
+                  })()}
+                  {property.video_thumbnail ? (
+                    <video
+                      className="absolute inset-0 w-full h-full object-cover rounded-sm"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      poster={property.image_url || undefined}
+                    >
+                      <source 
+                        src={property.video_thumbnail} 
+                        type="video/mp4" 
+                      />
+                      {/* Fallback to image if video fails to load */}
+                      {property.image_url ? (
+                        <Image
+                          src={property.image_url}
+                          alt={property.name}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 1024px) 100vw, 66vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
+                          <div className="w-24 h-24 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
+                            <Building2 className="w-12 h-12 text-openhouse-accent" />
+                          </div>
+                        </div>
+                      )}
+                    </video>
+                  ) : property.image_url ? (
                     <Image
                       src={property.image_url}
                       alt={property.name}
@@ -772,16 +830,24 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
                   {isPropertyLive(property.status) ? (
-                    <div className="flex flex-col items-start gap-3">
-                      <div>
-                        <button
-                          onClick={() => setIsTokenInfoModalOpen(true)}
-                          className="font-heading text-4xl font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
-                        >
-                          {property.name}
-                        </button>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex flex-row items-center gap-2">
+                        <Image 
+                          className="rounded-full" 
+                          src="https://vnxbsnahzolxhcyxrwcm.supabase.co/storage/v1/object/sign/images/token/visualelectric-1750966650984.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV80MGU2Zjk2OS1lYjI4LTRlM2QtYjBlOS1hYWYwYmJjNDJjNDgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvdG9rZW4vdmlzdWFsZWxlY3RyaWMtMTc1MDk2NjY1MDk4NC5wbmciLCJpYXQiOjE3NTA5NzExNDMsImV4cCI6MTc4MjUwNzE0M30.iN9vpU3fmJ5TMh-jviBjosDhLb78EqCj1E3OxKAQy6I" 
+                          alt="Token Logo"
+                          width={40} 
+                          height={40} 
+                          />
+                        <div className="flex flex-col items-start gap-1">
+                          <button
+                            onClick={() => setIsTokenInfoModalOpen(true)}
+                            className="font-heading font-title text-4xl leading-tight font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
+                          >
+                            {property.name}
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-openhouse-fg-muted">{tokenDetails?.token_symbol}</p>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3">
@@ -853,7 +919,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     </div>*/}
                     
                     <div className="flex items-center gap-8">
-                      <div className="flex flex-col items-start gap-1">
+                      <div className="flex flex-col items-center gap-1">
                         <h3 className="text-sm text-openhouse-fg-muted">Current Funding:</h3>
                         <p className="text-2xl font-semibold text-openhouse-fg">
                           {/*{fundingProgress.progress_percentage.toFixed(0)}% */}

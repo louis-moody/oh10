@@ -12,6 +12,7 @@ export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 export { AuthenticationFlow } from './AuthenticationFlow'
 export { ConnectButton } from './ConnectButton'
 export { Header } from './Header'
+export { Hero } from './Hero'
 export { DarkModeToggle } from './DarkModeToggle'
 export { EmptyState } from './EmptyState'
 export { LoadingState } from './LoadingState'

@@ -408,7 +408,7 @@ export function ReservationModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="text-2xl flex items-center gap-2">
             {getModalTitle()}
           </DialogTitle>
           <p className="text-sm text-openhouse-fg-muted">
@@ -416,7 +416,7 @@ export function ReservationModal({
           </p>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Property Info 
           <Card>
             <CardContent className="pt-4">
@@ -544,8 +544,8 @@ export function ReservationModal({
 
               {/* Calculation Display */}
               {calculatedUsdc > 0 && calculatedShares > 0 && (
-                <Card>
-                  <CardContent className="pt-4">
+                <Card className="p-0 m-0">
+                  <CardContent className="pt-0">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-sm font-medium text-openhouse-fg">Reservation Summary</span>
                     </div>
@@ -609,7 +609,7 @@ export function ReservationModal({
           <div className="flex gap-3">
             {existingReservation && existingReservation.payment_status !== 'transferred' && (
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={handleCancelReservation}
                 disabled={isCancelling}
                 className="flex-1 border-openhouse-danger text-openhouse-danger hover:bg-openhouse-danger/10"
@@ -628,7 +628,7 @@ export function ReservationModal({
               </Button>
             )}
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={onClose}
               disabled={flowState === 'approving' || flowState === 'storing' || isCancelling}
               className={existingReservation ? "flex-1" : "flex-1"}
@@ -653,12 +653,15 @@ export function ReservationModal({
             )}
           </div>
 
-          {/* Info Note */}
-          <div className="text-xs text-openhouse-fg-muted text-center space-y-1">
-            {existingReservation && existingReservation.payment_status !== 'transferred' && (
-              <p className="text-openhouse-accent font-medium">You can cancel your reservation at any time before funding closes.</p>
-            )}
-          </div>
+          {existingReservation && existingReservation.payment_status !== 'transferred' && (
+            <div>
+              {/* Info Note */}
+              <div className="text-xs text-openhouse-fg-muted text-center space-y-1">
+                <p className="text-openhouse-accent font-medium">You can cancel your reservation at any time before funding closes.</p>
+              </div>
+            </div>
+          )}
+
         </div>
       </DialogContent>
     </Dialog>

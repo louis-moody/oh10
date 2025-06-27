@@ -28,6 +28,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
     id,
     name,
     image_url,
+    video_thumbnail,
     price_per_token,
     funding_deadline,
     status,
@@ -35,6 +36,13 @@ export function PropertyCard({ property }: PropertyCardProps) {
     funding_goal_usdc,
     progress_percentage
   } = property
+
+  // fix: debug video_thumbnail in PropertyCard (Cursor Rule 6)
+  console.log(`🎬 PropertyCard ${name}:`, {
+    has_image: !!image_url,
+    has_video: !!video_thumbnail,
+    video_url: video_thumbnail
+  })
 
   const [completedStats, setCompletedStats] = useState<CompletedPropertyStats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
@@ -276,7 +284,39 @@ export function PropertyCard({ property }: PropertyCardProps) {
     <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200 ">
       <Link href={`/properties/${id}`} className="block h-full">
         <div className="aspect-[1/1] relative overflow-hidden bg-openhouse-bg-muted">
-          {image_url ? (
+          {/* fix: use dynamic video_thumbnail from Supabase for property showcase (Cursor Rule 4) */}
+          {video_thumbnail ? (
+            <video
+              className="absolute inset-0 w-full h-full object-cover rounded-sm"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              poster={image_url || undefined}
+            >
+              <source 
+                src={video_thumbnail} 
+                type="video/mp4" 
+              />
+              {/* Fallback to image if video fails to load */}
+              {image_url ? (
+                <Image
+                  src={image_url}
+                  alt={name}
+                  fill
+                  className="object-cover rounded-sm"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-openhouse-bg-muted to-openhouse-bg">
+                  <div className="w-16 h-16 rounded-lg bg-openhouse-accent/10 flex items-center justify-center">
+                    <DollarSign className="w-8 h-8 text-openhouse-accent" />
+                  </div>
+                </div>
+              )}
+            </video>
+          ) : image_url ? (
             <Image
               src={image_url}
               alt={name}

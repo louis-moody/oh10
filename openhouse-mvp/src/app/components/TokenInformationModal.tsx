@@ -61,7 +61,7 @@ export function TokenInformationModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Image src="/crypto/usdc.svg" alt="USDC" width={20} height={20} />
+            <Image className="rounded-full" src="https://vnxbsnahzolxhcyxrwcm.supabase.co/storage/v1/object/sign/images/token/visualelectric-1750966650984.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV80MGU2Zjk2OS1lYjI4LTRlM2QtYjBlOS1hYWYwYmJjNDJjNDgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvdG9rZW4vdmlzdWFsZWxlY3RyaWMtMTc1MDk2NjY1MDk4NC5wbmciLCJpYXQiOjE3NTA5NzExNDMsImV4cCI6MTc4MjUwNzE0M30.iN9vpU3fmJ5TMh-jviBjosDhLb78EqCj1E3OxKAQy6I" alt="Token Logo" width={32} height={32} />
             Token Information
           </DialogTitle>
         </DialogHeader>

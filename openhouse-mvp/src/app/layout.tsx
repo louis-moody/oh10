@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from './components/Providers'
 import { Header } from './components/Header'
+import { DarkModeToggle } from './components/DarkModeToggle'
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -32,11 +33,21 @@ export default function RootLayout({
         className={`${inter.className} antialiased`}
       >
         <Providers>
-          <div className="min-h-screen bg-openhouse-bg">
+          <div className="min-h-screen bg-openhouse-bg flex flex-col">
             <Header />
-            <main>
+            <main className="flex-1 pt-16">
               {children}
             </main>
+            <footer className="border-t border-openhouse-border bg-openhouse-bg">
+              <div className="container mx-auto px-4 py-6">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-openhouse-fg-muted">
+                    © 2024 OpenHouse. All rights reserved.
+                  </div>
+                  <DarkModeToggle />
+                </div>
+              </div>
+            </footer>
           </div>
         </Providers>
       </body>

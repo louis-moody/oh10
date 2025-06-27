@@ -24,6 +24,7 @@ export interface Property {
   id: string
   name: string
   image_url: string | null
+  video_thumbnail: string | null
   price_per_token: number
   total_shares: number
   funding_goal_usdc: number

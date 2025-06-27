@@ -5,6 +5,7 @@ import { supabase, type Property, type PropertyWithProgress } from '@/lib/supaba
 import { PropertyCard } from './components/PropertyCard'
 import { EmptyState } from './components/EmptyState'
 import { LoadingState } from './components/LoadingState'
+import { Hero } from './components/Hero'
 import { AlertCircle } from 'lucide-react'
 
 export default function HomePage() {
@@ -41,6 +42,13 @@ export default function HomePage() {
       if (!propertiesData || propertiesData.length === 0) {
         setProperties([])
         return
+      }
+
+      // fix: debug properties data from homepage (Cursor Rule 6)
+      console.log('🏠 Homepage properties raw data:', propertiesData)
+      if (propertiesData.length > 0) {
+        console.log('🏠 First property keys:', Object.keys(propertiesData[0]))
+        console.log('🏠 First property video_thumbnail:', propertiesData[0].video_thumbnail)
       }
 
       // fix: show properties with zero progress until payment_authorizations table is properly configured (Cursor Rule 4)
@@ -94,17 +102,22 @@ export default function HomePage() {
   }
 
   return (
-    <div className="container mx-auto px-0 py-0">
+    <>
+      {/* Hero Section 
+      <Hero />*/}
 
-      {properties.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
-          {properties.map((property) => (
-            <PropertyCard key={property.id} property={property} />
-          ))}
-        </div>
-      )}
-    </div>
+      {/* Properties Section */}
+      <div className="container mx-auto px-4 py-16">
+        {properties.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
+            {properties.map((property) => (
+              <PropertyCard key={property.id} property={property} />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   )
 }

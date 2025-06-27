@@ -1253,7 +1253,7 @@ export function TradingModal({
             <div className="flex gap-3">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => {
                   // fix: keep modal open while transaction processes (Cursor Rule 7)
                   setFlowState('input')
@@ -1376,7 +1376,7 @@ export function TradingModal({
             <div className="flex gap-3">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => {
                   // fix: keep modal open for more trading (Cursor Rule 7)
                   setFlowState('input')
