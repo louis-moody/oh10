@@ -798,14 +798,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
           </div>
 
           {/* Right Sidebar - Property Details + Tabs */}
-          <div className="lg:col-span-1 space-y-6 pl-20 pt-10 border-l border-openhouse-border">
+          <div className="lg:col-span-1 space-y-6 pl-8 pt-10 border-l border-openhouse-border">
             {/* Property Header */}
             <div className="pt-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
                   {isPropertyLive(property.status) ? (
                     <div className="flex flex-col items-center gap-3">
-                      <div className="flex flex-row items-center gap-2">
+                      <div className="flex flex-row items-center gap-3">
+                        <div className="relative">
                         <Image 
                           className="rounded-full" 
                           src="https://vnxbsnahzolxhcyxrwcm.supabase.co/storage/v1/object/sign/images/token/visualelectric-1750966650984.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV80MGU2Zjk2OS1lYjI4LTRlM2QtYjBlOS1hYWYwYmJjNDJjNDgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvdG9rZW4vdmlzdWFsZWxlY3RyaWMtMTc1MDk2NjY1MDk4NC5wbmciLCJpYXQiOjE3NTA5NzExNDMsImV4cCI6MTc4MjUwNzE0M30.iN9vpU3fmJ5TMh-jviBjosDhLb78EqCj1E3OxKAQy6I" 
@@ -813,13 +814,23 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                           width={40} 
                           height={40} 
                           />
+                          <Image 
+                            src={"/crypto/Base_Network_Logo.svg"} 
+                            alt="Base Logo" 
+                            width={24} 
+                            className="absolute -bottom-1 -right-1"
+                            height={24} />
+                        </div>
                         <div className="flex flex-col items-start gap-1">
                           <button
                             onClick={() => setIsTokenInfoModalOpen(true)}
-                            className="font-heading font-title text-4xl leading-tight font-semibold text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
+                            className="font-heading text-3xl tracking-tighter font-medium text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
                           >
                             {property.name}
                           </button>
+                          <p className="text-sm font-medium text-openhouse-fg-muted">
+                            {property.token_symbol}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -844,13 +855,13 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             {!isPropertyLive(property.status) && (
               <Card className="p-0 mt-0">
                 <CardContent className="p-0">
-                  <div className="grid grid-cols-3 gap-4 items-center justify-center p-4 px-6 bg-openhouse-bg-muted rounded-md">
+                  <div className="grid grid-cols-3 gap-4 items-center justify-center p-5 bg-openhouse-bg-muted rounded-sm">
                     <div>
                       <p className="text-sm text-openhouse-fg-muted">Total Shares</p>
                       <p className="font-semibold text-openhouse-fg">{property.total_shares.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-openhouse-fg-muted">Price Per Share</p>
+                      <p className="text-sm text-openhouse-fg-muted">Share Price</p>
                       <p className="font-semibold text-openhouse-fg">{formatCurrency(property.price_per_token)}</p>
                     </div>
                     <div>

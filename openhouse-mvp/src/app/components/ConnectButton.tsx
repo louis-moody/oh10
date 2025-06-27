@@ -207,7 +207,7 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   // fix: prevent hydration mismatch by not rendering until mounted (Cursor Rule 6)
   if (!isMounted) {
     return (
-      <Button variant="outline" disabled>
+      <Button variant="ghost" disabled className="text-medium rounded-sm">
         <Wallet className="w-4 h-4 mr-2" />
         Loading...
       </Button>
@@ -219,10 +219,9 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
     return (
       <Button 
         onClick={handleDisconnect}
-        variant="outline"
-        className="flex items-center gap-2"
+        variant="secondary"
+        className="text-medium rounded-sm text-openhouse-fg-muted"
       >
-        <LogOut className="w-4 h-4" />
         Disconnect
       </Button>
     )
@@ -231,8 +230,8 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
   return (
     <>
       <Button 
-        onClick={() => setIsModalOpen(true)}
-        className="flex items-center gap-2"
+        onClick={() => setIsModalOpen(true)}  
+        className="text-medium rounded-sm text-white"
       >
         Connect Wallet
       </Button>

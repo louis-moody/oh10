@@ -124,6 +124,9 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;
   }
+  p, span {
+    @apply text-sm font-medium;
+  }
 }
 
 @layer components {
@@ -132,5 +135,37 @@
   }
   .button-press:active {
     transform: scale(0.97);
+  }
+  
+  /* Container styles - editable */
+  .container {
+    @apply w-full mx-auto px-4;
+    max-width: 1280px;
+  }
+  
+  /* Responsive container breakpoints */
+  @media (min-width: 640px) {
+    .container {
+      @apply px-6;
+    }
+  }
+  
+  @media (min-width: 768px) {
+    .container {
+      @apply px-8;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .container {
+      @apply px-12;
+    }
+  }
+  
+  @media (min-width: 1280px) {
+    .container {
+      max-width: 1280px;
+      @apply px-0;
+    }
   }
 }
