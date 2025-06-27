@@ -5,7 +5,7 @@ import { supabase, type Property, type PropertyWithProgress } from '@/lib/supaba
 import { PropertyCard } from './components/PropertyCard'
 import { EmptyState } from './components/EmptyState'
 import { LoadingState } from './components/LoadingState'
-import { Hero } from './components/Hero'
+
 
 export default function HomePage() {
   const [properties, setProperties] = useState<PropertyWithProgress[]>([])
@@ -42,8 +42,6 @@ export default function HomePage() {
         setProperties([])
         return
       }
-
-
 
       // fix: show properties with zero progress until payment_authorizations table is properly configured (Cursor Rule 4)
       const propertiesWithProgress: PropertyWithProgress[] = propertiesData.map((property: Property) => ({
@@ -114,11 +112,11 @@ export default function HomePage() {
     return (
       <div className="mb-3">
         <div className="mb-3">
-          <h2 className=" text-xl font-medium text-openhouse-fg mb-2">
+          <h2 className=" text-xl font-medium my-8 py-2 font-medium text-openhouse-fg mb-2">
             {title}
           </h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-2">
           {properties
             .sort((a, b) => b.raised_amount - a.raised_amount) // Sort by highest funding first
             .slice(0, 4)
@@ -137,15 +135,15 @@ export default function HomePage() {
         {properties.length === 0 ? (
           <EmptyState />
         ) : (
-                    <>
+            <>
             {/* Property Sections */}
             {renderPropertySection(
-              '',
+              'Funding Now',
               organizedProperties.funding,
             )}
 
             {renderPropertySection(
-              'Available',
+              'Buy Now',
               organizedProperties.trading,
             )}
 

@@ -42,6 +42,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   
   // fix: tab section states for production page (Cursor Rule 4)
   const [activeTab, setActiveTab] = useState<TabType>('details')
+  const [isTabTransitioning, setIsTabTransitioning] = useState(false)
   const [propertyDetails, setPropertyDetails] = useState<PropertyDetails | null>(null)
   const [propertyFinancials, setPropertyFinancials] = useState<PropertyFinancials | null>(null)
   const [propertyActivity, setPropertyActivity] = useState<PropertyActivity[]>([])
@@ -369,6 +370,19 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         fetchMarketData(propertyId)
       }, 2000)
     }
+  }
+
+  // fix: smooth tab transitions with blur fade animation (Cursor Rule 4)
+  const handleTabChange = (newTab: TabType) => {
+    if (newTab === activeTab) return
+    
+    setIsTabTransitioning(true)
+    
+    // Short delay to allow blur effect
+    setTimeout(() => {
+      setActiveTab(newTab)
+      setIsTabTransitioning(false)
+    }, 150)
   }
 
   const formatCurrency = (amount: number) => {
@@ -824,7 +838,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                         <div className="flex flex-col items-start gap-1">
                           <button
                             onClick={() => setIsTokenInfoModalOpen(true)}
-                            className="font-heading text-3xl tracking-tighter font-medium text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
+                            className="font-title font-medium text-3xl text-openhouse-fg hover:text-openhouse-accent transition-colors text-left"
                           >
                             {property.name}
                           </button>
@@ -836,7 +850,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     </div>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <h1 className="font-heading text-2xl font-semibold text-openhouse-fg">
+                      <h1 className="font-title font-medium text-3xl text-openhouse-fg">
                         {property.name}
                       </h1>
                     </div>
@@ -906,14 +920,14 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     <div className="flex items-center gap-8">
                       <div className="flex flex-col items-start gap-1">
                         <h3 className="text-sm text-openhouse-fg-muted">Current Funding:</h3>
-                        <p className="text-2xl font-semibold text-openhouse-fg">
+                        <p className="text-2xl font-title font-medium text-openhouse-fg">
                           {/*{fundingProgress.progress_percentage.toFixed(0)}% */}
                           {formatCurrency(fundingProgress.raised_amount)} <span className="text-sm text-openhouse-fg-muted">of {formatCurrency(property.funding_goal_usdc)}</span>
                         </p>
                       </div>
                       <div className="flex flex-col gap-1 text-sm text-openhouse-fg-muted">
                         <h3 className="text-sm text-openhouse-fg-muted">Ends In:</h3>
-                        <p className="text-2xl font-semibold text-openhouse-fg">{formatDeadline(property.funding_deadline)}</p>
+                        <p className="text-2xl font-title font-medium text-openhouse-fg">{formatDeadline(property.funding_deadline)}</p>
                       </div>
                     </div>
                     <div className="w-full bg-openhouse-button-secondary rounded-full h-2 mt-4 mb-2">
@@ -925,7 +939,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   </div>
 
                   {existingReservation && (
-                    <div className="p-3 bg-openhouse-accent/10 border border-openhouse-accent/20">
+                    <div className="p-3 bg-openhouse-accent/10 border border-openhouse-accent/20 rounded-sm mt-4">
                       <p className="text-sm font-medium text-openhouse-accent mb-1">Your Reservation</p>
                       <p className="text-xs text-openhouse-fg-muted">
                         {existingReservation.token_amount} shares • {formatCurrency(existingReservation.usdc_amount)}
@@ -942,23 +956,37 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             {/* Tabbed Content - Now in Right Sidebar */}
             <Card className="p-0 mt-0 gap-0">
               <CardHeader className="p-0 border-b gap-0 mb-0 border-openhouse-border">
-                <div className="flex flex-row gap-4 justify-start">
-                  {(['details', 'financials', 'activity'] as const).map((tab) => (
+                <div className="relative flex flex-row gap-4 justify-start">
+                  {(['details', 'financials', 'activity'] as const).map((tab, index) => (
                     <button
                       key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`py-2 text-sm font-medium transition-colors ${
+                      onClick={() => handleTabChange(tab)}
+                      className={`relative py-2 px-1 text-sm font-medium transition-colors duration-200 ${
                         activeTab === tab
-                          ? 'bg-openhouse-bg text-openhouse-fg border-b-2 border-openhouse-accent'
-                          : 'text-openhouse-fg-muted hover:text-openhouse-fg border-b-1 border-transparent'
+                          ? 'text-openhouse-fg'
+                          : 'text-openhouse-fg-muted hover:text-openhouse-fg'
                       }`}
                     >
                       {tab.charAt(0).toUpperCase() + tab.slice(1)}
                     </button>
                   ))}
+                  {/* Sliding border indicator */}
+                  <div 
+                    className="absolute bottom-0 h-0.5 bg-openhouse-accent transition-all duration-300 ease-out"
+                    style={{
+                      width: activeTab === 'details' ? '48px' : activeTab === 'financials' ? '72px' : '56px',
+                      transform: `translateX(${
+                        activeTab === 'details' ? '4px' : 
+                        activeTab === 'financials' ? '68px' : 
+                        '156px'
+                      })`
+                    }}
+                  />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className={`transition-all duration-200 ${
+                isTabTransitioning ? 'blur-sm opacity-50' : 'blur-0 opacity-100'
+              }`}>
                 {activeTab === 'details' && renderDetailsTab()}
                 {activeTab === 'financials' && renderFinancialsTab()}
                 {activeTab === 'activity' && renderActivityTab()}

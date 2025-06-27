@@ -1034,7 +1034,7 @@ export function TradingModal({
                   setRecordedHashes(new Set())
                   setError('')
                 }}
-                className="w-full py-2 text-left text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
+                className="w-full py-2 text-left text-sm text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
               >
                 Buy Now
               </button>
@@ -1047,7 +1047,7 @@ export function TradingModal({
                   setRecordedHashes(new Set())
                   setError('')
                 }}
-                className="w-full py-2 text-left text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
+                className="w-full py-2 text-left text-sm text-openhouse-fg rounded-sm transition-all pl-2 hover:pl-4 hover:bg-openhouse-bg-muted"
                 disabled={userTokenBalance <= BigInt(0)}
               >
                 Sell Your Shares
@@ -1248,37 +1248,6 @@ export function TradingModal({
                   )}
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  // fix: keep modal open while transaction processes (Cursor Rule 7)
-                  setFlowState('input')
-                  setError('')
-                  setUsdcAmount('')
-                  setShareAmount('')
-                  setTransactionStep('idle')
-                }}
-                className="flex-1"
-              >
-{wasExecutedInstantly ? 'Trade More' : 'Place Another Order'}
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  onClose()
-                  // fix: refresh data when closing (Cursor Rule 7)
-                  if (onTradeSuccess) {
-                    onTradeSuccess()
-                  }
-                }}
-                className="flex-1"
-              >
-                Close
-              </Button>
             </div>
           </div>
         )}

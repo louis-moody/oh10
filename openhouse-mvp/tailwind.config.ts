@@ -10,10 +10,10 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-inter)'],
+        sans: ['SuisseIntl', 'sans-serif'],
         mono: ['var(--font-mono)'],
-        heading: ['var(--font-inter)'],
-        title: ['NeueMontreal', 'sans-serif'],
+        heading: ['SuisseIntl', 'sans-serif'],
+        title: ['SuisseIntl', 'sans-serif'],
       },
       fontSize: {
         // Add custom font sizes

@@ -220,7 +220,7 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
       <Button 
         onClick={handleDisconnect}
         variant="secondary"
-        className="text-medium rounded-sm text-openhouse-fg-muted"
+        className="text-medium rounded-sm text-openhouse-fg"
       >
         Disconnect
       </Button>

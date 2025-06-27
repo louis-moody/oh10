@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicClient, http } from 'viem'
-import { base } from 'viem/chains'
-import { OrderBookExchangeABI } from '@/lib/contracts'
 import { createClient } from '@supabase/supabase-js'
 
 // fix: CLEAN ORDERBOOK - remove phantom orders that don't exist on-chain (Cursor Rule 4)
@@ -68,19 +65,21 @@ export async function POST(req: NextRequest) {
         created_at: order.created_at
       }))
 
-      // fix: delete all orders for this property since contract is empty (Cursor Rule 4)
-      const { error: deleteError } = await supabase
-        .from('order_book')
-        .delete()
-        .eq('property_id', property_id)
-
-      if (deleteError) {
-        console.error('❌ CLEAN: Failed to delete phantom orders:', deleteError)
-        return NextResponse.json({ error: 'Failed to clean database' }, { status: 500 })
-      }
-
-      cleanupResults.cleanedCount = dbOrders.length
-      console.log(`✅ CLEAN: Deleted ${dbOrders.length} phantom orders`)
+      // fix: SAFETY CHECK - do not auto-delete orders without explicit confirmation (Cursor Rule 6)
+      console.log(`⚠️ CLEAN: Found ${dbOrders.length} potentially phantom orders but NOT deleting automatically`)
+      console.log('🛡️ CLEAN: Manual verification required before deletion to prevent data loss')
+      
+      // Don't delete automatically - just report what would be deleted
+      cleanupResults.cleanedCount = 0
+      
+      return NextResponse.json({
+        success: true,
+        property_id,
+        contractAddress: 'phantom_detection',
+        cleanupResults,
+        warning: 'Phantom orders detected but not deleted - manual verification required',
+        action_required: 'Review orders before deletion'
+      })
 
     } else {
       // Contract has some orders - check which database orders are valid

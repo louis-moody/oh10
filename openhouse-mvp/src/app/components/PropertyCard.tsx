@@ -248,7 +248,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
   const renderCompletedStats = () => {
     if (isLoadingStats || !completedStats) {
       return (
-        <CardContent className="pt-0 space-y-3">
+        <CardContent className="pt-0 space-y-3 py-0">
           {/* Three-column data layout */}
           <div className="grid grid-cols-3 gap-4 items-center justify-center p-3 bg-openhouse-bg-muted rounded-md">
             <div className="text-center">
@@ -275,7 +275,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
     }
 
     return (
-      <CardContent className="pt-0 space-y-3">
+      <CardContent className="pt-0 space-y-3 py-0">
         {/* Three-column data layout */}
         <div className="grid grid-cols-3 gap-4 items-start justify-start">
           <div className="text-left">
@@ -313,9 +313,9 @@ export function PropertyCard({ property }: PropertyCardProps) {
 
   // fix: render crowdfunding stats for non-completed properties (Cursor Rule 4)
   const renderCrowdfundingStats = () => (
-    <CardContent className="pt-0 space-y-3">
+    <CardContent className="pt-0 space-y-3 py-0">
       {/* Three-column data layout */}
-      <div className="grid grid-cols-3 gap-4 items-start justify-start">
+      <div className="grid grid-cols-3 gap-2 items-start justify-start p-3 bg-openhouse-bg-muted rounded-sm">
         <div className="text-left">
           <p className="text-sm text-openhouse-fg-muted">Available</p>
           <p className="font-semibold text-openhouse-fg">
@@ -357,7 +357,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
   )
 
   return (
-    <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200 ">
+    <Card className="group h-full overflow-hidden bg-card rounded-sm transition-all duration-200 p-2 border border-openhouse-border rounded-md">
       <Link href={`/properties/${id}`} className="block h-full">
         <div className="aspect-[1/1] relative overflow-hidden bg-openhouse-bg-muted">
           {/* fix: use dynamic video_thumbnail from Supabase for property showcase (Cursor Rule 4) */}
@@ -416,7 +416,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
         </div>
 
         <CardHeader className="py-2 px-0">
-          <h3 className="font-heading text-lg pl-0 font-medium text-openhouse-fg group-hover:text-openhouse-accent text-left transition-colors line-clamp-2">
+          <h3 className="font-title font-medium text-xl pl-0 font-medium text-openhouse-fg group-hover:text-openhouse-accent text-left transition-colors line-clamp-2">
             {name}
           </h3>
         </CardHeader>
