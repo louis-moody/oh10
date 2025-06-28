@@ -185,6 +185,67 @@ export const PROPERTY_SHARE_TOKEN_ABI = [
   }
 ] as const;
 
+// fix: OpenHouseRouter ABI for smart routing (Cursor Rule 7)
+export const OPENHOUSE_ROUTER_ABI = [
+  {
+    name: 'smartBuyOrder',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'propertyId', type: 'uint256' },
+      { name: 'tokenAmount', type: 'uint256' },
+      { name: 'maxPricePerToken', type: 'uint256' }
+    ],
+    outputs: [{ name: 'orderId', type: 'uint256' }]
+  },
+  {
+    name: 'smartSellOrder',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'propertyId', type: 'uint256' },
+      { name: 'tokenAmount', type: 'uint256' },
+      { name: 'minPricePerToken', type: 'uint256' }
+    ],
+    outputs: [{ name: 'orderId', type: 'uint256' }]
+  },
+  {
+    name: 'getPropertyMarketData',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'propertyId', type: 'uint256' }],
+    outputs: [{
+      name: '',
+      type: 'tuple',
+      components: [
+        { name: 'propertyId', type: 'uint256' },
+        { name: 'orderbook', type: 'address' },
+        { name: 'token', type: 'address' },
+        { name: 'bestBuyPrice', type: 'uint256' },
+        { name: 'bestSellPrice', type: 'uint256' },
+        { name: 'buyLiquidity', type: 'uint256' },
+        { name: 'sellLiquidity', type: 'uint256' },
+        { name: 'lastUpdated', type: 'uint256' },
+        { name: 'isActive', type: 'bool' }
+      ]
+    }]
+  },
+  {
+    name: 'isPropertyRegistered',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'propertyId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    name: 'routerFeeBasisPoints',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }]
+  }
+] as const;
+
 // fix: YieldDistributor ABI for yield distribution interactions (Cursor Rule 4)
 export const YIELD_DISTRIBUTOR_ABI = [
   {

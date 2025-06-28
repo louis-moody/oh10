@@ -415,8 +415,8 @@ export function PropertyCard({ property }: PropertyCardProps) {
           </div>
         </div>
 
-        <CardHeader className="py-2 px-0">
-          <h3 className="font-title font-medium text-xl pl-0 font-medium text-openhouse-fg group-hover:text-openhouse-accent text-left transition-colors line-clamp-2">
+        <CardHeader className="px-3 pt-3 pb-2">
+          <h3 className="font-title font-medium text-lg font-medium text-openhouse-fg group-hover:text-openhouse-accent text-left transition-colors line-clamp-2">
             {name}
           </h3>
         </CardHeader>

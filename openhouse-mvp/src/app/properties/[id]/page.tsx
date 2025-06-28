@@ -365,10 +365,10 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       fetchMarketData(propertyId)
       fetchFundingProgress(propertyId, property.funding_goal_usdc)
       
-      // Force UI refresh
+      // Force UI refresh with longer delay to avoid spam
       setTimeout(() => {
         fetchMarketData(propertyId)
-      }, 2000)
+      }, 5000)
     }
   }
 
@@ -919,14 +919,14 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                     
                     <div className="flex items-center gap-8">
                       <div className="flex flex-col items-start gap-1">
-                        <h3 className="text-sm text-openhouse-fg-muted">Current Funding:</h3>
+                        <h3 className="text-sm font-medium text-openhouse-fg-muted">Current Funding:</h3>
                         <p className="text-2xl font-title font-medium text-openhouse-fg">
                           {/*{fundingProgress.progress_percentage.toFixed(0)}% */}
                           {formatCurrency(fundingProgress.raised_amount)} <span className="text-sm text-openhouse-fg-muted">of {formatCurrency(property.funding_goal_usdc)}</span>
                         </p>
                       </div>
                       <div className="flex flex-col gap-1 text-sm text-openhouse-fg-muted">
-                        <h3 className="text-sm text-openhouse-fg-muted">Ends In:</h3>
+                        <h3 className="text-sm font-medium text-openhouse-fg-muted">Ends In:</h3>
                         <p className="text-2xl font-title font-medium text-openhouse-fg">{formatDeadline(property.funding_deadline)}</p>
                       </div>
                     </div>
