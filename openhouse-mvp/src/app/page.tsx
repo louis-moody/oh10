@@ -16,6 +16,19 @@ export default function HomePage() {
     fetchProperties()
   }, [])
 
+  // fix: listen for logout events and reset state (Cursor Rule 6)
+  useEffect(() => {
+    const handleLogout = () => {
+      console.log('🔄 HOME PAGE: User logged out, resetting state')
+      setProperties([])
+      setError(null)
+      setIsLoading(false)
+    }
+
+    window.addEventListener('userLogout', handleLogout)
+    return () => window.removeEventListener('userLogout', handleLogout)
+  }, [])
+
   const fetchProperties = async () => {
     try {
       setIsLoading(true)
@@ -43,12 +56,48 @@ export default function HomePage() {
         return
       }
 
-      // fix: show properties with zero progress until payment_authorizations table is properly configured (Cursor Rule 4)
-      const propertiesWithProgress: PropertyWithProgress[] = propertiesData.map((property: Property) => ({
-        ...property,
-        raised_amount: 0,
-        progress_percentage: 0
-      }))
+      // fix: calculate real funding progress for each property from payment_authorizations (Cursor Rule 4)
+      const propertiesWithProgress: PropertyWithProgress[] = []
+
+      for (const property of propertiesData) {
+        let raisedAmount = 0
+        let progressPercentage = 0
+
+        // fix: handle completed/funded properties that may not have payment_authorizations data (Cursor Rule 4)
+        if (property.status === 'completed' || property.status === 'live' || property.status === 'funded') {
+          // fix: for completed properties, assume funding goal was met (Cursor Rule 4)
+          raisedAmount = property.funding_goal_usdc
+          progressPercentage = 100
+          console.log(`✅ HOME PAGE: Property ${property.name} is ${property.status} - showing as 100% funded`)
+        } else {
+          // fix: for active properties, check actual payment authorization data (Cursor Rule 4)
+          const { data: authData, error: authError } = await supabase
+            .from('payment_authorizations')
+            .select('usdc_amount')
+            .eq('property_id', property.id)
+            .in('payment_status', ['approved', 'transferred'])
+
+          console.log(`🏠 HOME PAGE: Checking funding for active property ${property.name}:`, {
+            property_id: property.id,
+            authError: authError?.message,
+            authDataCount: authData?.length || 0
+          })
+
+          if (!authError && authData && authData.length > 0) {
+            raisedAmount = authData.reduce((sum, auth) => sum + parseFloat(auth.usdc_amount), 0)
+            progressPercentage = Math.min((raisedAmount / property.funding_goal_usdc) * 100, 100)
+            console.log(`💰 HOME PAGE: Calculated raised amount for ${property.name}: $${raisedAmount} (${progressPercentage.toFixed(1)}%)`)
+          } else {
+            console.log(`📊 HOME PAGE: No funding data found for ${property.name} - showing as 0% funded`)
+          }
+        }
+
+        propertiesWithProgress.push({
+          ...property,
+          raised_amount: raisedAmount,
+          progress_percentage: Math.round(progressPercentage * 100) / 100
+        })
+      }
 
       setProperties(propertiesWithProgress)
     } catch (err) {

@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
 
     return response
 
-      } catch {
-      // fix: still clear cookie even if database operation fails (Cursor Rule 3)
+  } catch {
+    // fix: still clear cookie even if database operation fails (Cursor Rule 3)
     const response = NextResponse.json({ success: true })
     response.cookies.set('app-session-token', '', {
       httpOnly: true,

@@ -198,9 +198,16 @@ export function ConnectButton({ onAuthSuccess }: ConnectButtonProps) {
 
       disconnect()
       onAuthSuccess?.('')
+      
+      // fix: emit custom event to notify other components of logout (Cursor Rule 6)
+      window.dispatchEvent(new CustomEvent('userLogout'))
     } catch {
       // fix: still disconnect wallet even if API fails (Cursor Rule 6)
       disconnect()
+      onAuthSuccess?.('')
+      
+      // fix: emit custom event to notify other components of logout (Cursor Rule 6)
+      window.dispatchEvent(new CustomEvent('userLogout'))
     }
   }
 

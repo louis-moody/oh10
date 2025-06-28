@@ -61,17 +61,20 @@ export function PropertyCard({ property }: PropertyCardProps) {
     console.log(`[PropertyCard] Fetching stats for property ${id}, status: ${status}`)
     setIsLoadingStats(true)
     try {
-      // fix: fetch property token details with contract addresses (Cursor Rule 4)
-      const { data: tokenDetails, error: tokenError } = await supabase
-        .from('property_token_details')
-        .select('*')
-        .eq('property_id', id)
-        .single()
-
-      if (tokenError) {
-        console.error('Failed to fetch token details:', tokenError)
+      // fix: fetch property token details via API to avoid RLS issues (Cursor Rule 3)
+      const response = await fetch(`/api/trading/token-details?property_id=${id}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(`[PropertyCard] No token deployed for property ${id}`)
+          return
+        }
+        console.error('Failed to fetch token details:', response.status)
         return
       }
+
+      const tokenResponse = await response.json()
+      const tokenDetails = tokenResponse.data
 
       console.log(`[PropertyCard] Token details:`, tokenDetails)
 
@@ -194,18 +197,21 @@ export function PropertyCard({ property }: PropertyCardProps) {
     }
   }, [id])
 
-  // fix: fetch available shares for live properties (Cursor Rule 4)
+  // fix: fetch available shares via API to avoid RLS issues (Cursor Rule 3)
   const fetchAvailableShares = useCallback(async () => {
-    if (!supabase) return
-    
     try {
-      const { data, error } = await supabase
-        .from('property_token_details')
-        .select('available_shares')
-        .eq('property_id', id)
-        .single()
+      const response = await fetch(`/api/trading/token-details?property_id=${id}`)
+      
+      if (!response.ok) {
+        // Fallback to total_shares if no token details yet
+        setAvailableShares(total_shares)
+        return
+      }
 
-      if (!error && data && data.available_shares !== null) {
+      const tokenResponse = await response.json()
+      const data = tokenResponse.data
+
+      if (data && data.available_shares !== null) {
         setAvailableShares(data.available_shares)
       } else {
         // Fallback to total_shares if no token details yet
@@ -250,17 +256,17 @@ export function PropertyCard({ property }: PropertyCardProps) {
       return (
         <CardContent className="pt-0 space-y-3 py-0">
           {/* Three-column data layout */}
-          <div className="grid grid-cols-3 gap-4 items-center justify-center p-3 bg-openhouse-bg-muted rounded-md">
-            <div className="text-center">
-              <p className="text-sm text-openhouse-fg-muted">Available</p>
-              <p className="font-semibold text-openhouse-fg">
-                {availableShares !== null ? availableShares : total_shares}
-              </p>
-            </div>
+          <div className="grid grid-cols-3 gap-4 items-center justify-center p-3 bg-openhouse-bg-muted rounded-sm">
             <div className="text-center">
               <p className="text-sm text-openhouse-fg-muted">Price</p>
               <p className="font-semibold text-openhouse-fg">
                 {formatCurrency(price_per_token)}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-openhouse-fg-muted">Available</p>
+              <p className="font-semibold text-openhouse-fg">
+                {availableShares !== null ? availableShares : total_shares}
               </p>
             </div>
             <div className="text-center">
@@ -277,13 +283,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
     return (
       <CardContent className="pt-0 space-y-3 py-0">
         {/* Three-column data layout */}
-        <div className="grid grid-cols-3 gap-4 items-start justify-start">
-          <div className="text-left">
-            <p className="text-sm text-openhouse-fg-muted">Available</p>
-            <p className="font-semibold text-openhouse-fg">
-              {availableShares !== null ? availableShares : total_shares}
-            </p>
-          </div>
+        <div className="grid grid-cols-3 gap-4 items-center justify-center p-3 bg-openhouse-bg-muted rounded-sm">
           <div className="text-left">
             <p className="text-sm text-openhouse-fg-muted">Price</p>
             <p className="font-semibold text-openhouse-fg">
@@ -293,6 +293,12 @@ export function PropertyCard({ property }: PropertyCardProps) {
                   (Last traded)
                 </span>
               )}
+            </p>
+          </div>
+          <div className="text-left">
+            <p className="text-sm text-openhouse-fg-muted">Available</p>
+            <p className="font-semibold text-openhouse-fg">
+              {availableShares !== null ? availableShares : total_shares}
             </p>
           </div>
           <div className="text-left">
@@ -317,40 +323,22 @@ export function PropertyCard({ property }: PropertyCardProps) {
       {/* Three-column data layout */}
       <div className="grid grid-cols-3 gap-2 items-start justify-start p-3 bg-openhouse-bg-muted rounded-sm">
         <div className="text-left">
-          <p className="text-sm text-openhouse-fg-muted">Available</p>
-          <p className="font-semibold text-openhouse-fg">
-            {availableShares !== null ? availableShares : total_shares}
-          </p>
-        </div>
-        <div className="text-left">
           <p className="text-sm text-openhouse-fg-muted">Price</p>
           <p className="font-semibold text-openhouse-fg">
             {formatCurrency(price_per_token)}
           </p>
         </div>
         <div className="text-left">
-          <p className="text-sm text-openhouse-fg-muted">Annual Yield</p>
+          <p className="text-sm text-openhouse-fg-muted">Goal</p>
           <p className="font-semibold text-openhouse-fg">
-            {propertyFinancials?.annual_yield_pct ? `${propertyFinancials.annual_yield_pct.toFixed(1)}%` : 'TBD'}
+            <span className="font-semibold text-openhouse-fg">{formatCurrency(raised_amount)}</span> <span className="text-openhouse-fg-muted">of {formatCurrency(funding_goal_usdc)}</span>
           </p>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm text-openhouse-fg-muted">
-          <div className="text-sm text-openhouse-fg-muted">
-            <span className="font-semibold text-openhouse-fg">{formatCurrency(raised_amount)}</span> <span className="text-openhouse-fg-muted">of {formatCurrency(funding_goal_usdc)}</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-openhouse-fg-muted">
-            <span>Ends {formatDeadline(funding_deadline)}</span>
-          </div>
-        </div>
-        <div className="w-full bg-openhouse-bg-muted rounded-full h-2">
-          <div 
-            className="bg-openhouse-success h-2 rounded-full transition-all duration-300"
-            style={{ width: `${Math.min(progress_percentage, 100)}%` }}
-          />
+        <div className="text-left">
+          <p className="text-sm text-openhouse-fg-muted">Ends</p>
+          <p className="font-semibold text-openhouse-fg">
+            <span>{formatDeadline(funding_deadline)}</span>
+          </p>
         </div>
       </div>
     </CardContent>

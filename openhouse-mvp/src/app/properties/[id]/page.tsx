@@ -121,18 +121,24 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     }
   }
 
-  // fix: fetch token details and market data for live properties (Cursor Rule 4)
+  // fix: fetch token details via API to avoid RLS issues (Cursor Rule 3)
   const fetchTokenDetails = async (propertyId: string) => {
     try {
-      if (!supabase) return
+      const response = await fetch(`/api/trading/token-details?property_id=${propertyId}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('No token deployed for this property')
+          return
+        }
+        console.error('Failed to fetch token details:', response.status)
+        return
+      }
 
-      const { data: tokenData, error: tokenError } = await supabase
-        .from('property_token_details')
-        .select('*')
-        .eq('property_id', propertyId)
-        .single()
+      const tokenResponse = await response.json()
+      const tokenData = tokenResponse.data
 
-      if (!tokenError && tokenData) {
+      if (tokenData) {
         setTokenDetails(tokenData)
         
         // fix: always fetch market data for completed properties (Cursor Rule 4)
